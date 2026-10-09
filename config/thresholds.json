@@ -43,6 +43,7 @@
   "pollSeconds": {
     "nhc": 300,
     "nws": 60,
+    "hazards": 60,
     "forecast": 900,
     "usgs": 900,
     "ndbc": 600,

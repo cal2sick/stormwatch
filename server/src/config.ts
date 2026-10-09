@@ -39,7 +39,7 @@ export function loadThresholds(): Thresholds {
   return JSON.parse(readFileSync(path.join(root, "config", "thresholds.json"), "utf8"));
 }
 
-export const USER_AGENT = process.env.USER_AGENT || "Stormwatch/0.1 (self-hosted; set USER_AGENT in .env)";
+export const USER_AGENT = process.env.USER_AGENT || "Stormwatch/0.2 (self-hosted; set USER_AGENT in .env)";
 export const PORT = Number(process.env.PORT || 8787);
 export const HOST = process.env.HOST || "localhost"; // localhost only (no LAN access)
 

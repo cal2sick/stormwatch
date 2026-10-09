@@ -13,7 +13,8 @@ import { fetchArcgisOutages, fetchOdin, ODIN_URL, POWER_LINKS } from "./sources/
 import { applyHysteresis, computeThreat, type HystState } from "./threat.js";
 import { diffEvents, mkEvent } from "./events.js";
 import { arrivalFromIsochrones, bearingDeg, cardinal, distanceMi, motionCpa, pointInGeometry, trackCpa } from "./geo.js";
-import type { FeedStatus, Snapshot, Storm, StormGis } from "./types.js";
+import { activeAt, fetchHazards, hazardsAtPoint, nwsHazardsUrl } from "./sources/hazards.js";
+import type { FeedStatus, Hazard, Snapshot, Storm, StormGis } from "./types.js";
 
 export const bus = new EventEmitter();
 bus.setMaxListeners(100);
@@ -22,6 +23,7 @@ const EMPTY: Omit<Snapshot, "home"> = {
   version: "", gisVersion: "", generatedAt: new Date().toISOString(), storms: [], alerts: [], forecast: null,
   gauges: [], buoys: [], radar: null, power: { local: null, odin: null, links: POWER_LINKS }, events: [],
   threat: { level: "DATA STALE", reasons: ["No data yet"] }, feeds: {},
+  hazards: [], homeHazardIds: [], hazardsVersion: "", hazardNotes: [],
 };
 const cached = readCache<Partial<Snapshot>>("snapshot");
 let snapshot: Snapshot = { ...EMPTY, ...(cached ?? {}), home: loadHome() } as Snapshot;
@@ -29,7 +31,12 @@ snapshot.power = { ...EMPTY.power, ...(snapshot.power ?? {}), links: POWER_LINKS
 if (!OUTAGE_ARCGIS_URL) { snapshot.power.local = null; delete snapshot.feeds?.power; }
 if (!ODIN_FIPS) { snapshot.power.odin = null; delete snapshot.feeds?.odin; }
 if (!snapshot.home.configured) { snapshot.alerts = []; snapshot.forecast = null; snapshot.gauges = []; for (const k of ["nws", "forecast", "usgs"]) delete snapshot.feeds?.[k]; }
+snapshot.hazards ??= []; snapshot.homeHazardIds ??= []; snapshot.hazardsVersion ??= ""; snapshot.hazardNotes ??= [];
 export const getSnapshot = () => snapshot;
+
+// Severe-weather hazard shapes (last good), served by /api/hazards. Expired ones drop out on every rebuild.
+let hazardList: Hazard[] = readCache<Hazard[]>("hazards") ?? [];
+export const getHazards = () => ({ version: snapshot.hazardsVersion, generatedAt: snapshot.generatedAt, hazards: hazardList.filter((h) => Date.parse(h.expires) > Date.now()) });
 
 // Per-storm GIS (last good), keyed by storm id.
 type GisEntry = StormGis & { advisoryText: string | null };
@@ -93,8 +100,17 @@ function rebuild() {
   const prev = snapshot.version ? structuredClone(snapshot) : null;
   const storms = snapshot.storms.map((s) => derive(s, home));
   if (home.configured) storms.sort((a, b) => a.distanceMi - b.distanceMi);
-  const computed = home.configured ? computeThreat(snapshot.alerts, storms, t, allStale, now)
+  // Hazards: keep anything not yet expired (future onsets stay so the slider can show them).
+  hazardList = hazardList.filter((h) => Date.parse(h.expires) > now);
+  const hazardsVersion = createHash("sha1").update(hazardList.map((h) => `${h.id}:${h.expires}`).join("|")).digest("hex").slice(0, 12);
+  const homeHazards = home.configured ? hazardsAtPoint(activeAt(hazardList, now), home.lat, home.lon) : [];
+  const computed0 = home.configured ? computeThreat(snapshot.alerts, storms, t, allStale, now)
     : { level: "SET LOCATION" as const, reasons: ["No location set. Add HOME_LAT and HOME_LON to your .env file and restart to get a threat level, local alerts and winds for your place."] };
+  // A tornado or flash flood warning polygon over the home point is RED even if the point alert feed lags.
+  const homeWarn = homeHazards.filter((x) => x.kind === "tornadoWarning" || x.kind === "flashFloodWarning");
+  const computed = homeWarn.length && computed0.level !== "DATA STALE" && computed0.level !== "SET LOCATION"
+    ? { level: "RED" as const, reasons: [...homeWarn.map((x) => `${x.title} polygon covers your home until ${new Date(x.expires).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" })} ET (${x.issuer})`), ...computed0.reasons] }
+    : computed0;
   const h = applyHysteresis(hyst, computed.level, t.stepDownHysteresisMinutes ?? 30, now);
   hyst = h.state;
   const reasons = h.holdUntil
@@ -102,7 +118,9 @@ function rebuild() {
     : computed.reasons;
   const gisVersion = [...gisByStorm.values()].map((g) => `${g.stormId}:${g.advisoryNumber}:${g.cone ? 1 : 0}${g.toaEarliest ? 1 : 0}`).join("|");
   const next: Snapshot = {
-    ...snapshot, home, storms, gisVersion, generatedAt: new Date().toISOString(),
+    ...snapshot, home, storms, gisVersion,
+    hazards: hazardList.map(({ geometry: _g, ...rest }) => rest), homeHazardIds: homeHazards.map((x) => x.id), hazardsVersion,
+    generatedAt: new Date().toISOString(),
     threat: { level: h.state.level, reasons, computedLevel: computed.level, holdUntil: h.holdUntil },
   };
   const evs = diffEvents(prev, next, {
@@ -159,6 +177,15 @@ const jobs: Job[] = [
     key: "forecast", source: "NWS hourly + gridpoint forecast", url: () => nwsPointsUrl(loadHome()),
     run: async () => { const r = await fetchForecast(loadHome()); snapshot.forecast = r.forecast; return r.sourceTime; }, enabled: needsHome,
   },
+  {
+    // Tornado / severe thunderstorm watches (SPC via IEM) + NWS tornado warnings, flash flood warnings and watches. Nationwide.
+    key: "hazards", source: "SPC watches (IEM) + NWS tornado and flash flood alerts", url: () => nwsHazardsUrl(),
+    run: async () => {
+      const r = await fetchHazards();
+      hazardList = r.hazards; snapshot.hazardNotes = r.notes; writeCache("hazards", hazardList);
+      return r.sourceTime;
+    },
+  },
   { key: "radar", source: "RainViewer radar", url: () => RAINVIEWER_URL, run: async () => { const r = await fetchRadar(); snapshot.radar = r.radar; return r.sourceTime; } },
   { key: "usgs", source: "USGS river gauges near you (NWIS)", url: () => usgsUrl(loadHome()), run: async () => { const r = await fetchUsgs(loadHome()); snapshot.gauges = r.gauges; return r.sourceTime; }, enabled: needsHome },
   {
@@ -203,7 +230,7 @@ export async function runJob(job: Job): Promise<boolean> {
 /** Each job polls on its own interval, with exponential backoff on failure (max 30 min) and Retry-After honored. */
 export function startPolling() {
   // NHC first, then its GIS (needs the raw storm list), then everything else staggered a little.
-  const order = ["nhc", "nhcgis", "nws", "forecast", "radar", "usgs", "ndbc", "power", "odin"];
+  const order = ["nhc", "nhcgis", "nws", "hazards", "forecast", "radar", "usgs", "ndbc", "power", "odin"];
   order.forEach((key, i) => {
     const job = jobs.find((j) => j.key === key)!;
     if (job.enabled && !job.enabled()) return; // feature off (no location set, or optional plugin not configured)

@@ -21,7 +21,7 @@ npm run typecheck    # must pass before every commit
 npm run build        # must pass before every PR
 npm run smoke        # live fetch of every enabled feed (needs internet; not run in CI)
 ```
-Health check: `curl http://localhost:8787/api/health` -> `{"ok":true,...}`. Full state: `/api/snapshot`, geometry: `/api/gis`, live push: `/ws`.
+Health check: `curl http://localhost:8787/api/health` -> `{"ok":true,...}`. Full state: `/api/snapshot`, geometry: `/api/gis`, watch/warning shapes: `/api/hazards`, live push: `/ws`.
 
 ## Layout
 - `server/src/config.ts`: env + `config/thresholds.json` loading. Location only from `HOME_LAT`/`HOME_LON`.

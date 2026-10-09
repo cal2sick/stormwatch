@@ -8,7 +8,7 @@
                  │
                  ▼
   Snapshot (storms, alerts, forecast, gauges, buoys, radar, power, threat, feeds)
-                 │  GET /api/snapshot · GET /api/gis · WebSocket /ws (push on change)
+                 │  GET /api/snapshot · GET /api/gis · GET /api/hazards · WebSocket /ws (push on change)
                  ▼
   web/ (React + MapLibre)  ── map, time slider, panels; served by the same server on :8787
 ```

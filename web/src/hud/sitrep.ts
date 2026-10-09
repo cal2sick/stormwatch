@@ -1,3 +1,4 @@
+import { CONE_TEXT } from "../hazards";
 import type { Snapshot, Storm } from "../types";
 import { className, compassWords, ktToMph } from "../format";
 import { fmtDayET } from "../time";
@@ -20,7 +21,7 @@ export function sitrepParas(snap: Snapshot, s: Storm | undefined): { tag: string
     out.push({ tag: "Situation", text: `NHC advisory ${Number(s.advisoryNumber ?? 0) || s.advisoryNumber || "?"} (${fmtDayET(s.advisoryIssuance)}). ${s.name.toUpperCase()}, ${kind}. Max sustained ${ktToMph(s.intensityKt) ?? "?"} mph (${s.intensityKt ?? "?"} kt), min pressure ${s.pressureMb ?? "?"} mb.${motion}` });
     if (snap.home.configured) {
     const prox = [`Center ${Math.round(s.distanceMi)} mi ${compassWords(s.bearingDeg)} of home as of ${fmtDayET(s.lastUpdate)}.`];
-    if (s.inCone != null) prox.push(s.inCone ? "Home is INSIDE the forecast cone." : "Home is outside the forecast cone; hazards extend beyond it.");
+    if (s.inCone != null) prox.push((s.inCone ? "Home is inside the forecast cone. " : "Home is outside the forecast cone. ") + CONE_TEXT);
     if (s.trackCpa) prox.push(s.trackCpa.receding ? "Forecast track moves away from home." : `Closest approach on NHC track ~${Math.round(s.trackCpa.distanceMi)} mi near ${fmtDayET(s.trackCpa.time)}.`);
     out.push({ tag: "Distance", text: prox.join(" ") + " (Estimates.)" });
     const a = s.tsArrival;

@@ -5,7 +5,7 @@ import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { HOST, PORT, ROOT } from "./config.js";
-import { bus, getGis, getSnapshot, startPolling } from "./poller.js";
+import { bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
 await app.register(cors, { origin: true });
@@ -14,6 +14,8 @@ await app.register(websocket);
 app.get("/api/health", async () => ({ ok: true, version: getSnapshot().version, generatedAt: getSnapshot().generatedAt }));
 app.get("/api/snapshot", async () => getSnapshot());
 app.get("/api/gis", async () => getGis());
+/** Active watch / warning shapes (GeoJSON geometry + verbatim NWS text). Re-fetch when snapshot.hazardsVersion changes. */
+app.get("/api/hazards", async () => getHazards());
 
 app.register(async (f) => {
   f.get("/ws", { websocket: true }, (socket) => {

@@ -44,3 +44,12 @@ Link-outs only: your utility's own outage map (`OUTAGE_MAP_URL`) and PowerOutage
 
 ## Ideas for more sources (contributions welcome)
 NHC wind speed probabilities, storm surge (P-Surge), WPC rainfall, model tracks (ATCF a-decks), GOES satellite imagery, reconnaissance (hurricane hunter) data. Keep them free, keyless and opt-in if they are heavy.
+
+
+## Severe-weather hazards (v0.2)
+
+| Layer | Source | URL | Poll | Notes |
+|---|---|---|---|---|
+| Tornado / severe thunderstorm watches | NOAA SPC via Iowa Environmental Mesonet | `https://mesonet.agron.iastate.edu/json/spcwatch.py` | 60 s | SPC `ActiveWW.kml` returns 404; NWS watch alerts have no polygon |
+| Tornado warnings, flash flood warnings and watches | NWS alerts API | `https://api.weather.gov/alerts/active?event=Tornado Warning,Flash Flood Warning,Flash Flood Watch` | 60 s | Text kept verbatim; watch areas use `api.weather.gov/zones/...` shapes (cached, max 60 new zones per poll) |
+| Backup warning polygons | Iowa Environmental Mesonet storm-based warnings | `https://mesonet.agron.iastate.edu/geojson/sbw.geojson` | only if NWS fails | No full text; labelled as backup |

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl, { Map as MlMap, Marker, type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
-import type { Snapshot, Storm, StormGis } from "../types";
+import type { Hazard, Snapshot, Storm, StormGis } from "../types";
 import { fmtClockET, fmtET, staleness } from "../time";
 import { addStormLayers, STORM_LAYER_IDS, updateStormLayers, WW_HEX } from "./ConeLayer";
 import { showRadarFrame, syncRadarFrames } from "./RadarLayer";
-import { LAYER_LABELS, type LayerKey } from "./layers";
+import { LAYER_LABELS, VIEW_LABELS, type LayerKey, type ViewMode } from "./layers";
+import { addHazardLayers, HAZARD_LAYER_IDS, updateHazardLayers } from "./HazardLayer";
+import { activeAt, CONE_TEXT, FLOOD_KINDS, HAZARD_HEX, HAZARD_NAME, hazardFeatures, TORNADO_KINDS, untilET } from "../hazards";
 import { circle } from "../timeline";
 import { className, ktToMph } from "../format";
 
@@ -30,8 +32,8 @@ function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); retur
 
 export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number }
 
-export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost }: {
-  ghost?: SliderPos | null;
+export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode }: {
+  ghost?: SliderPos | null; hazards?: Hazard[]; hazardTime: number; mode?: ViewMode; onMode?: (m: ViewMode) => void;
   snap: Snapshot | null; storm: Storm | undefined; gis: StormGis | undefined;
   layers: Record<LayerKey, boolean>; onToggle: (k: LayerKey) => void; lowBandwidth: boolean;
 }) {
@@ -69,6 +71,16 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
           layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Regular"], "text-size": 9, "text-anchor": "top-left", "text-offset": [0.3, 0.3] },
           paint: { "text-color": "#5d6b62" } });
         addStormLayers(m);
+        addHazardLayers(m);
+        m.on("click", "hz-fill", (e) => {
+          const ps = (e.features ?? []).map((f) => f.properties as Record<string, any>);
+          if (!ps.length) return;
+          const esc = (x: string) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+          const rows = ps.map((p) => { const h = hzRef.current.find((x) => x.id === p.id); return h ? `<b>${esc(h.title)}</b><br>${esc(h.plain)}<br>Until ${untilET(h.expires)} · ${esc(h.issuer)}${h.url && /^https:/.test(h.url) && !/api\.weather\.gov/.test(h.url) ? ` · <a href="${h.url}" target="_blank" rel="noreferrer">details</a>` : ""}<br><small>Source: ${esc(h.source)}</small>` : ""; });
+          new maplibregl.Popup({ closeButton: true, className: "hud-popup", maxWidth: "340px" }).setLngLat(e.lngLat).setHTML(rows.join("<hr>")).addTo(m);
+        });
+        m.on("mouseenter", "hz-fill", () => (m.getCanvas().style.cursor = "pointer"));
+        m.on("mouseleave", "hz-fill", () => (m.getCanvas().style.cursor = ""));
         for (const id of ["tm-trail", "tm-ring", "tm-toa"]) m.addSource(id, { type: "geojson", data: EMPTY });
         m.addLayer({ id: "tm-ring-fill", type: "fill", source: "tm-ring", paint: { "fill-color": "#ff5a4f", "fill-opacity": 0.08 } });
         m.addLayer({ id: "tm-ring-line", type: "line", source: "tm-ring", paint: { "line-color": "#ff5a4f", "line-width": 1, "line-dasharray": [3, 2] } });
@@ -96,6 +108,14 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     })();
     return () => { cancelled = true; map.current?.remove(); map.current = null; };
   }, []);
+
+  // Hazard polygons in effect at the slider time (or now when live).
+  const hzRef = useRef<Hazard[]>([]);
+  hzRef.current = hazards;
+  const hzKinds = [...(layers.tornado ? TORNADO_KINDS : []), ...(layers.flood ? FLOOD_KINDS : [])];
+  const hzMinute = Math.floor(hazardTime / 60_000);
+  useEffect(() => { if (ready && map.current) updateHazardLayers(map.current, hazardFeatures(hazards, hazardTime, hzKinds)); }, [ready, hazards, hzMinute, layers.tornado, layers.flood]);
+  const hzShown = activeAt(hazards, hazardTime).filter((h) => hzKinds.includes(h.kind));
 
   // Storm geometry.
   useEffect(() => { if (ready && map.current) updateStormLayers(map.current, gis); }, [ready, gis]);
@@ -175,6 +195,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     const vis = (id: string, on: boolean) => m.getLayer(id) && m.setLayoutProperty(id, "visibility", on ? "visible" : "none");
     for (const [k, ids] of Object.entries(STORM_LAYER_IDS)) ids.forEach((id) => vis(id, layers[k as LayerKey]));
     vis("outages", layers.outages);
+    HAZARD_LAYER_IDS.forEach((id) => vis(id, layers.tornado || layers.flood));
     vis("gauges", layers.gauges); vis("buoys", layers.buoys);
     vis("nightlights", layers.nightlights && !lowBandwidth);
     baseLayers.current.forEach((id) => { if (id !== "bg" && !/background/.test(id)) vis(id, !lowBandwidth); });
@@ -203,6 +224,9 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     <div className="map-wrap">
       <div ref={el} className="map" />
       <div className="map-chips">
+        {onMode && (Object.keys(VIEW_LABELS) as ViewMode[]).map((v) => (
+          <button key={v} className={`btn mode ${mode === v ? "on" : ""}`} onClick={() => onMode(v)} aria-pressed={mode === v}>{VIEW_LABELS[v]}</button>
+        ))}
         {(Object.keys(LAYER_LABELS) as LayerKey[]).map((k) => (
           <button key={k} className={`btn ${layers[k] ? "on" : ""}`} onClick={() => onToggle(k)}>{LAYER_LABELS[k]}</button>
         ))}
@@ -219,7 +243,15 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
       <div className="map-legend">
         {ghost && <div><span style={{ color: "#ff5a4f" }}>━</span> Path from now to the selected time · <span style={{ color: "#ff5a4f" }}>◌</span> Likely error range at that time · <span style={{ color: "#e3a64a" }}>━</span> Where tropical-storm winds have likely arrived by then</div>}
         <div className={`stale-${st("nhcgis")}`}>{storm ? `${className(storm.classification)} ${storm.name}` : "No storm"} · NHC advisory {gis?.advisoryNumber ?? "—"} · {fmtET(gis?.issuance)}</div>
-        <div className={`stale-${st("radar")}`}>Radar (RainViewer) · latest {fmtET(snap?.radar?.frames.at(-1)?.time)}</div>
+        {layers.cone && <div className="cone-note">{CONE_TEXT}</div>}
+        {(layers.tornado || layers.flood) && <div className={`stale-${st("hazards")}`}>
+          Watches and warnings in effect {ghost && Math.abs(hazardTime - Date.now()) > 120_000 ? "at the selected time" : "now"}: {hzShown.length ? hzShown.length : "none on the map"} · Sources: NOAA Storm Prediction Center (watches, via Iowa Environmental Mesonet) and National Weather Service · updated {fmtET(f.hazards?.lastSuccess)}{st("hazards") !== "fresh" ? " · OUT OF DATE" : ""}
+          {hazardTime > Date.now() + 120_000 && <><br />Future times only show watches and warnings already issued. New ones can be issued at any time.</>}
+        </div>}
+        {(layers.tornado || layers.flood) && <div className="ww-key">
+          {[...(layers.tornado ? TORNADO_KINDS : []), ...(layers.flood ? FLOOD_KINDS : [])].map((k) => <span key={k}><i style={{ background: HAZARD_HEX[k] }} />{HAZARD_NAME[k]} </span>)}
+        </div>}
+        {mode !== "hazards" && <div className={`stale-${st("radar")}`}>Radar (RainViewer) · latest {fmtET(snap?.radar?.frames.at(-1)?.time)}</div>}
         {snap?.power.local && <div className={`stale-${st("power")}`}>{snap.power.local.name}: {snap.power.local.count} · as of {fmtET(f.power?.sourceTime)}</div>}
         {snap?.home.configured && <div className={`stale-${st("usgs")}`}>River gauges (USGS) · {fmtET(f.usgs?.sourceTime)} <span className="lg-dot r" />rising <span className="lg-dot s" />steady</div>}
         <div className={`stale-${st("ndbc")}`}>Buoys near the storm (NOAA) · {fmtET(f.ndbc?.sourceTime)}</div>

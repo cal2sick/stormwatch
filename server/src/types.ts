@@ -121,6 +121,27 @@ export interface Power {
   links: { name: string; url: string }[];
 }
 
+export type HazardKind = "tornadoWarning" | "tornadoWatch" | "severeWatch" | "flashFloodWarning" | "flashFloodWatch";
+/** A severe-weather area on the map (watch or warning). Official text fields are verbatim. */
+export interface Hazard {
+  id: string;
+  kind: HazardKind;
+  title: string;              // e.g. "Tornado Watch 677"
+  plain: string;              // plain-English meaning
+  onset: string | null;       // ISO
+  expires: string;            // ISO
+  issuer: string;             // e.g. "NWS Mobile AL"
+  source: string;             // data feed name
+  url: string | null;
+  headline: string | null;    // verbatim NWS
+  description: string | null; // verbatim NWS
+  instruction: string | null; // verbatim NWS
+  areaDesc?: string | null;
+  geometry: GeoJSON.Geometry | null;
+}
+/** Hazard without geometry (sent in the snapshot; shapes come from /api/hazards). */
+export type HazardSummary = Omit<Hazard, "geometry">;
+
 export interface HudEvent { id: string; time: string; kind: string; text: string; level: "info" | "warn" | "alert" }
 
 export type ThreatLevel = "GREEN" | "YELLOW" | "ORANGE" | "RED" | "DATA STALE" | "SET LOCATION";
@@ -139,6 +160,10 @@ export interface Snapshot {
   power: Power;
   threat: { level: ThreatLevel; reasons: string[]; computedLevel?: ThreatLevel; holdUntil?: string | null };
   events: HudEvent[];
+  hazards: HazardSummary[];   // active SPC watches + NWS tornado / flash flood warnings and flash flood watches (no shapes)
+  homeHazardIds: string[];    // hazards whose polygon contains the home point
+  hazardsVersion: string;     // changes when /api/hazards geometry changes
+  hazardNotes: string[];      // feed problems in plain English
   feeds: Record<string, FeedStatus>;
 }
 

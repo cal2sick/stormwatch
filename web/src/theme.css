@@ -230,3 +230,19 @@ body { font-size: 14px; }
 .tm-scale { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; }
 .tm-live { color: #ff5a4f; font-size: 15px; }
 .banner.setup { color: var(--text, #e6e6e6); text-transform: none; letter-spacing: 0; font-size: 14px; padding: 8px 14px; border-bottom: 1px solid var(--amber); } .banner.setup code { color: var(--amber); }
+
+/* v0.2 hazards: home banners, hazard list rows, cone wording */
+.hz-banner { position: relative; z-index: 42; padding: 10px 16px; font-size: 16px; line-height: 1.4; border-bottom: 2px solid; text-transform: none; letter-spacing: 0; }
+.hz-banner.tor { background: #5a0000; color: #fff; border-color: #ff2a2a; animation: hzpulse 1.6s ease-in-out infinite alternate; }
+.hz-banner.tor .hz-big { font-size: 22px; font-weight: 700; }
+.hz-banner.tor .hz-act { font-size: 19px; font-weight: 700; margin: 4px 0; }
+.hz-banner.tor details { margin-top: 6px; } .hz-banner.tor summary { cursor: pointer; font-size: 14px; }
+.hz-banner.tor pre.verbatim { white-space: pre-wrap; max-height: 40vh; overflow: auto; font-size: 14px; background: #2a0000; padding: 8px; }
+.hz-banner.watch { background: #2a2400; color: #ffe27a; border-color: #ffd23f; }
+.hz-banner.flood { background: #002a12; color: #9dffc0; border-color: #2ee66b; }
+@media (prefers-reduced-motion: reduce) { .hz-banner.tor { animation: none; } }
+@keyframes hzpulse { from { background: #5a0000; } to { background: #7a0a0a; } }
+.hz-row { border-left: 4px solid; padding: 4px 8px; margin: 6px 0; font-size: 14px; line-height: 1.35; }
+.cone-note { font-size: 13px; color: var(--text, #e6e6e6); text-transform: none; letter-spacing: 0; }
+.btn.mode { font-weight: 700; }
+.hud-popup hr { border: 0; border-top: 1px solid #333; margin: 6px 0; }

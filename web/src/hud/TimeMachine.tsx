@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Snapshot, Storm, StormGis } from "../types";
 import { cleanTrack, closestApproach, describe, fmtLat, fmtLon, fmtTime, ktToMph, roundMph5, stateAt, type TrackPoint, type TrackState } from "../track";
+import { CONE_TEXT } from "../hazards";
 import { adviceWindows, alertsActiveAt, coneRadiusMi, fullTrack, hourAt, magnets, pathBetween, snapTime } from "../timeline";
 
 export type SliderState = TrackState & { trail: [number, number][]; uncertaintyMi: number };
@@ -133,6 +134,7 @@ export default function TimeMachine({ snap, storm, gis, now, onState }: {
       {hasHome && cpa && <p className="tm-cpa">Closest the storm center gets to home (forecast): about {Math.round(cpa.distanceMi)} miles {cpa.bearingFromHomeCardinal} of home at {fmtTime(cpa.time)}
         <button className="btn tick" onClick={() => { setPlaying(false); setPicked(Math.round(cpa.time / STEP) * STEP); }}>show</button></p>}
       {hasHome && <p className="tm-text">Your home is {storm.inCone ? "inside" : "outside"} the National Hurricane Center's 5-day forecast cone (advisory {adv ?? "?"}).</p>}
+      <p className="tm-text cone-note">{CONE_TEXT}</p>
       <p className="tm-warn">Positions come from the National Hurricane Center forecast and are filled in between its forecast points. The further ahead, the less certain (the dashed ring on the map shows the typical error). Official forecasts and alerts always win.</p>
     </div>
   );

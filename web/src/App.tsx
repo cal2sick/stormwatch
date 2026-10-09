@@ -20,7 +20,10 @@ import { useSnapshot } from "./useSnapshot";
 import { useGis } from "./useGis";
 import { useNow } from "./useNow";
 import { speak, useAlerts } from "./useAlerts";
-import { DEFAULT_LAYERS, type LayerKey } from "./map/layers";
+import { DEFAULT_LAYERS, effectiveLayers, type LayerKey, type ViewMode } from "./map/layers";
+import HazardBanner from "./hud/HazardBanner";
+import HazardsPanel from "./hud/HazardsPanel";
+import { useHazards } from "./useHazards";
 import { threatColor } from "./format";
 
 function usePref<T>(key: string, init: T) {
@@ -34,11 +37,14 @@ export default function App() {
   const gis = useGis(snap?.gisVersion);
   const now = useNow(1000);
   const [layers, setLayers] = usePref<Record<LayerKey, boolean>>("layers", DEFAULT_LAYERS);
-  const [prefs, setPrefs] = usePref("prefs", { voice: false, notify: false, lowBw: false });
+  const [prefs, setPrefs] = usePref("prefs", { voice: false, notify: false, lowBw: false, mode: "standard" as ViewMode });
+  const hazards = useHazards(snap?.hazardsVersion);
   const [stormId, setStormId] = useState<string | null>(null);
   const [tm, setTm] = useState<SliderState | null>(null);
   const [more, setMore] = useState(false);
   useAlerts(snap, prefs.voice, prefs.notify);
+  const hazardTime = tm?.time ?? now;
+  const shownLayers = effectiveLayers(layers, prefs.mode);
 
   // Selected storm: the user's pick if still active, else the nearest (never chosen by name).
   const storm = snap?.storms.find((s) => s.id === stormId) ?? snap?.storms[0];
@@ -66,6 +72,7 @@ export default function App() {
       {snap && !snap.home.configured && <div className="banner setup" role="alert">
         No location set, so the map shows storms only. To get distance, local alerts, winds and a threat level for your place: copy <code>.env.example</code> to <code>.env</code>, set <code>HOME_LAT</code> and <code>HOME_LON</code> (decimal degrees, e.g. from a map app), then restart with <code>npm start</code>. Your location stays on your computer.
       </div>}
+      <HazardBanner snap={snap} now={now} />
       <header className="topbar">
         <div className="brand">
           <div className="title">STORMWATCH</div>
@@ -97,6 +104,7 @@ export default function App() {
             <ThreatLadder snap={view} variant="full" />
           </Panel>
           <AlertList snap={snap} area="alerts" />
+          <HazardsPanel snap={snap} time={hazardTime} area="hazards" />
           {more && <VitalsPanel snap={snap} storm={storm} now={now} area="vitals" />}
           {more && snap?.home.configured && <Panel title="Storm position around your home" feed={snap?.feeds.nhc} source="NHC position + forecast points" area="scope">
             <RangeScope snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} />
@@ -104,9 +112,10 @@ export default function App() {
         </aside>
         <section className="col center">
           <div className="map-frame" data-area="map">
-            <MapView snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={layers}
+            <MapView snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
+              hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
               ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, label: `${storm.name} at ${new Date(tm.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" })} ET · ${tm.windMph ?? "?"} mph` } : null}
-              onToggle={(k: LayerKey) => setLayers((l) => ({ ...l, [k]: !l[k] }))} lowBandwidth={prefs.lowBw} />
+              onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }} lowBandwidth={prefs.lowBw} />
           </div>
           {more && <div className="center-bottom">
             <SitrepReadout snap={snap} storm={storm} onSpeak={speak} area="sitrep" />
