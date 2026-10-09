@@ -37,6 +37,7 @@ import HomePanel from "./hud/HomePanel";
 import { useBrowserHome } from "./useHome";
 import { distanceMi } from "./geo";
 import { useAutoReload } from "./useAutoReload";
+import HitTimeline from "./hud/HitTimeline";
 
 function usePref<T>(key: string, init: T) {
   const [v, setV] = useState<T>(() => { try { const s = localStorage.getItem("stormwatch:" + key); return s ? { ...init, ...JSON.parse(s) } : init; } catch { return init; } });
@@ -149,6 +150,10 @@ export default function App() {
             <HomePanel home={snap?.home.configured ? snap.home : null} source={homeSource} browserHome={browserHome} picking={pickingHome} onPicking={setPickingHome}
               onSet={(p) => { setBrowserHome(p); setPickingHome(false); }} />
           </Panel>
+          {readSnap?.home.configured && <Panel title={`When does it hit ${readSnap.home.name.split(",")[0]}?`} feed={readSnap === snap ? snap?.feeds.forecast : undefined} source="NWS hourly forecast + NWS alerts for this place" time={readSnap.forecast?.updateTime ?? null} area="hit">
+            <HitTimeline hourly={readSnap.forecast?.hourly ?? []} alerts={readSnap.alerts ?? []} now={now} place={readSnap.home.name.split(",")[0]}
+              selected={tm && !tm.live ? tm.time : null} onPick={(t) => setJump((j) => ({ t: t + 30 * 60_000 > now && t <= now ? null : t, seq: j.seq + 1 }))} />
+          </Panel>}
           <Panel title={storm ? `${storm.name} at the selected time` : "Storm at the selected time"} feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine">
             <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} jump={jump} dock={dockEl} />
           </Panel>
