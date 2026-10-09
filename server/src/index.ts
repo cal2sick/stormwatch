@@ -12,6 +12,7 @@ import { getTimelines, listAdvisories, loadAdvisory } from "./advisories.js";
 import { threatForPlace, bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
 import { localFeed } from "./sources/localFeed.js";
 import { pointCard } from "./sources/pointCard.js";
+import { radarPoint, scanFor } from "./sources/radarPoint.js";
 import { radarMotion, stormMotion, type RadarMotion } from "./sources/radarMotion.js";
 import { getOutageAreas, startOutageHistory } from "./sources/outageAreas.js";
 
@@ -82,7 +83,13 @@ app.get("/api/point", quiet, async (req, reply) => {
   if (!p) return reply.code(400).send({ error: "bad lat/lon" });
   const t = q?.t ? (/^\d+$/.test(String(q.t)) ? Number(q.t) : Date.parse(String(q.t))) : Date.now();
   if (!Number.isFinite(t)) return reply.code(400).send({ error: "bad time" });
-  try { return await pointCard(p.lat, p.lon, t); } catch { return reply.code(502).send({ error: "Data for this point is not available right now." }); }
+  const radarFn = async (la: number, lo: number, tt: number) => {
+    const r = getSnapshot().radar, scan = scanFor(tt, Date.now(), r?.kind === "iem" ? r.latestScan ?? null : null);
+    if (!scan) return { none: "Radar is observed only. For a future time, see the forecast radar on the map (Next 3 hours)." };
+    if (Date.now() - Date.parse(scan) > 7 * 24 * 3.6e6) return { none: "No radar archive this far back here." };
+    return radarPoint(la, lo, scan);
+  };
+  try { return await pointCard(p.lat, p.lon, t, undefined, undefined, radarFn); } catch { return reply.code(502).send({ error: "Data for this point is not available right now." }); }
 });
 app.get("/api/place", quiet, async (req, reply) => {
   const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);

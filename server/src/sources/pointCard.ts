@@ -6,7 +6,9 @@
 // Base data is cached per point rounded to 0.01 deg (~0.7 mi) for 5 minutes; the time filter runs per request.
 import { USER_AGENT } from "../config.js";
 import { nearbyOutages, type NearbyOutages } from "./place.js";
+import type { RadarPoint } from "./radarPoint.js";
 
+const RADAR_SRC = "NOAA NEXRAD reflectivity (Iowa Environmental Mesonet composite)";
 export type Fetcher = (url: string, accept?: string) => Promise<any>;
 const defaultFetch: Fetcher = async (url, accept = "application/geo+json") => {
   const r = await fetch(url, { headers: { "User-Agent": USER_AGENT, Accept: accept }, signal: AbortSignal.timeout(15_000) });
@@ -21,7 +23,7 @@ export interface PointCard {
   wind: Sourced<{ mph: number; dir: string | null }>; gust: Sourced<number>; rainChance: Sourced<number>; rainIn: Sourced<number>;
   alerts: Sourced<{ event: string; headline: string | null; severity: string | null; onset: string | null; ends: string | null; sender: string | null }[]>;
   outages: Sourced<{ nearestMi: number | null; customersNearby: number; radiusMi: number; county: string | null; countyOut: number | null; coverage: string }>;
-  radar: Sourced<string>;
+  radar: Sourced<RadarPoint>;
 }
 
 /** Parse an NWS gridpoint validTime "2026-10-09T22:00:00+00:00/PT3H" into [start, end) ms. */
@@ -78,8 +80,12 @@ const placeName = (n: any): string | null => {
   return parts.length ? parts.join(", ") : (n?.display_name ?? null);
 };
 
-export async function pointCard(lat: number, lon: number, t: number, f: Fetcher = defaultFetch, outagesFn = nearbyOutages): Promise<PointCard> {
-  const b = await loadBase(lat, lon, f, outagesFn);
+/** Radar lookup for the card: returns the value for the scan nearest the time, or a reason it has none. */
+export type RadarFn = (lat: number, lon: number, t: number) => Promise<RadarPoint | { none: string }>;
+const noRadar: RadarFn = async () => ({ none: "Radar value not loaded." });
+
+export async function pointCard(lat: number, lon: number, t: number, f: Fetcher = defaultFetch, outagesFn = nearbyOutages, radarFn: RadarFn = noRadar): Promise<PointCard> {
+  const [b, rd] = await Promise.all([loadBase(lat, lon, f, outagesFn), radarFn(lat, lon, t).catch(() => ({ none: "The radar server did not answer." }))]);
   const g = b.grid?.properties, upd = g?.updateTime ?? null, NWS = "NWS gridpoint forecast";
   const unavailable = <T>(source: string, note: string): Sourced<T> => ({ value: null, source, time: null, note });
   const tooFar = g && !gridValueAt(g.windSpeed, t) ? "No NWS forecast covers this time here." : undefined;
@@ -96,7 +102,7 @@ export async function pointCard(lat: number, lon: number, t: number, f: Fetcher 
     outages: b.outages ? { value: { nearestMi: b.outages.outages[0]?.distanceMi ?? null, customersNearby: b.outages.totalCustomers, radiusMi: b.outages.radiusMi, county: b.outages.county?.name ?? null,
       countyOut: b.outages.county ? b.outages.county.rows.reduce((s, r) => s + r.customers, 0) : null, coverage: b.outages.coverage },
       source: [...b.outages.feeds.filter((x) => x.status === "ok").map((x) => x.name), b.outages.county?.source].filter(Boolean).join(" + ") || "utility feeds", time: b.outages.checked } : unavailable("utility outage feeds", "Outage feeds did not answer."),
-    radar: unavailable("NEXRAD (IEM)", "Radar value under the tap is not available yet; see the radar layer on the map."),
+    radar: "none" in rd ? unavailable(RADAR_SRC, rd.none) : { value: rd, source: RADAR_SRC, time: rd.scan },
   };
   return card;
 }

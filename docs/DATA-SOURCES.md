@@ -100,3 +100,6 @@ NHC wind speed probabilities, storm surge (P-Surge), WPC rainfall, model tracks 
 | Tap card: wind, gusts, rain chance, rain amount | NWS `api.weather.gov/points` -> `forecastGridData` at the slider time | no | per tap (5 min cache) |
 | Tap card: alerts | NWS `alerts/active?point=lat,lon`, filtered by onset/ends to the slider time | no | per tap (5 min cache) |
 | Tap card: outages | same utility feeds / ORNL ODIN as "Power outages near" | no | per tap |
+
+## Radar value under a tap (v0.7)
+- **Iowa Environmental Mesonet NEXRAD n0q composite WMS** (`/cgi-bin/wms/nexrad/n0q-t.cgi`, free, keyless, same scans as the radar layer). One 5x5-pixel PNG per tapped point and scan, cached 10 minutes. Colors are mapped back to dBZ with IEM's published n0q color table (https://mesonet.agron.iastate.edu/GIS/rasters.php?rid=2), stored in `config/n0q-colors.json`. Words for dBZ bands are typical meanings, not measured rain rates.

@@ -18,8 +18,24 @@ export const mercBox = (lon: number, lat: number, halfM: number): [number, numbe
   const [x, y] = toMerc(lon, lat); return [x - halfM, y - halfM, x + halfM, y + halfM];
 };
 
+function toRgba(out: Buffer, w: number, h: number, ct: number, bpp: number, pal: Buffer | null, trns: Buffer | null): Uint8Array {
+  const px = new Uint8Array(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    const o = i * bpp, q = i * 4;
+    if (ct === 6) { px[q] = out[o]; px[q + 1] = out[o + 1]; px[q + 2] = out[o + 2]; px[q + 3] = out[o + 3]; }
+    else if (ct === 2) { px[q] = out[o]; px[q + 1] = out[o + 1]; px[q + 2] = out[o + 2]; px[q + 3] = 255; }
+    else if (ct === 4) { px[q] = px[q + 1] = px[q + 2] = out[o]; px[q + 3] = out[o + 1]; }
+    else if (ct === 0) { px[q] = px[q + 1] = px[q + 2] = out[o]; px[q + 3] = 255; }
+    else { const k = out[o]; if (pal) { px[q] = pal[k * 3]; px[q + 1] = pal[k * 3 + 1]; px[q + 2] = pal[k * 3 + 2]; } px[q + 3] = trns && k < trns.length ? trns[k] : 255; }
+  }
+  return px;
+}
+/** v0.7: decode an 8-bit PNG to RGBA pixels (same decoder as pngIntensity). */
+export function pngRgba(buf: Buffer): { w: number; h: number; px: Uint8Array } {
+  const d = decodePng(buf); return { w: d.w, h: d.h, px: toRgba(d.out, d.w, d.h, d.ct, d.bpp, d.pal, d.trns) };
+}
 /** Minimal PNG decoder: 8-bit RGBA / RGB / gray-alpha / palette, non-interlaced. Returns alpha*luma-ish intensity 0..1 per pixel. */
-export function pngIntensity(buf: Buffer): { w: number; h: number; v: Float32Array } {
+function decodePng(buf: Buffer) {
   if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error("not a PNG");
   let p = 8, w = 0, h = 0, depth = 0, ct = 0, interlace = 0; const idat: Buffer[] = []; let pal: Buffer | null = null, trns: Buffer | null = null;
   while (p < buf.length) {
@@ -41,15 +57,12 @@ export function pngIntensity(buf: Buffer): { w: number; h: number; v: Float32Arr
       out[y * stride + x] = v & 255;
     }
   }
-  const v = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    const o = i * bpp;
-    if (ct === 6) v[i] = out[o + 3] / 255 * (out[o] + out[o + 1] + out[o + 2]) / 765;
-    else if (ct === 2) v[i] = (out[o] + out[o + 1] + out[o + 2]) / 765;
-    else if (ct === 4) v[i] = out[o + 1] / 255 * out[o] / 255;
-    else if (ct === 0) v[i] = out[o] / 255;
-    else { const k = out[o]; const al = trns && k < trns.length ? trns[k] / 255 : 1; v[i] = pal ? al * (pal[k * 3] + pal[k * 3 + 1] + pal[k * 3 + 2]) / 765 : 0; }
-  }
+  return { w, h, ct, bpp, out, pal, trns };
+}
+export function pngIntensity(buf: Buffer): { w: number; h: number; v: Float32Array } {
+  const { w, h, ct, bpp, out, pal, trns } = decodePng(buf);
+  const v = new Float32Array(w * h), rgba = toRgba(out, w, h, ct, bpp, pal, trns);
+  for (let i = 0; i < w * h; i++) v[i] = rgba[i * 4 + 3] / 255 * (rgba[i * 4] + rgba[i * 4 + 1] + rgba[i * 4 + 2]) / 765;
   return { w, h, v };
 }
 

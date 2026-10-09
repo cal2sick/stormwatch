@@ -13,6 +13,7 @@ The futuristic revamp, auto-update, and new "when does it hit me" tools. Shipped
   - The storm is the familiar hurricane symbol, colored by Saffir-Simpson category and slowly turning (still when "reduce motion" is set). Home is a cyan crosshair.
   - Every card folds (tap its title; remembered per card). Detail cards (station observations, tornado/flood list, threat details, place lookup) start folded.
   - The map centers and fits into the area the cards leave free, so the storm is never under the dock or the side panel.
+- **Tap card redesign + radar under the tap.** The card for a tapped spot now leads with what the radar shows there: NEXRAD reflectivity at that exact point for the scan nearest the slider time (live = newest scan, past = that 5-minute scan; future times say radar is observed only), in words ("Heavy rain", "Very heavy rain, flooding possible", ...) with the dBZ, the strongest echo within ~3 miles, and the scan time, on a chip in the standard radar color. Then four big tiles (wind, gusts, rain chance, distance to the storm), alerts as colored rows, and a sources block with each source and its time. New `server/src/sources/radarPoint.ts` reads a 5x5-pixel IEM n0q image around the point and maps colors back to dBZ with IEM's published n0q color table (`config/n0q-colors.json`). 6 new tests.
 - **Pages reload themselves.** New `/api/version` (version, git sha, web build time). The page polls it every 20 s and, when it changes, shows "Updated to vX, reloading" for 3 s and reloads.
 
 ## v0.6.1 (2026-10-09, branch `preview`)
