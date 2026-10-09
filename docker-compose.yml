@@ -1,0 +1,14 @@
+# Optional. `docker compose up --build` then open http://localhost:8787. Native `npm start` is the main path.
+# One service: the API process also serves the built web app,
+# so there is a single port and nothing to keep in sync.
+services:
+  stormwatch:
+    build: .
+    ports:
+      - "127.0.0.1:8787:8787"   # localhost only
+    env_file:
+      - .env            # cp .env.example .env first
+    volumes:
+      - ./config:/app/config:ro   # edit thresholds live; re-read every poll
+      - ./data:/app/data          # last-known-good cache survives restarts
+    restart: unless-stopped

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Official hurricane information (NHC)
+    url: https://www.nhc.noaa.gov
+    about: For forecasts and warnings, always use official sources.
+  - name: Report a security issue privately
+    url: https://github.com/cal2sick/stormwatch/security/advisories/new
+    about: Please do not open public issues for vulnerabilities.

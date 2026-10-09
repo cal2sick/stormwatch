@@ -1,0 +1,54 @@
+{
+  "distanceMi": {
+    "yellow": 300,
+    "orange": 150,
+    "red": 75
+  },
+  "tsWindArrivalHoursOrange": 12,
+  "alertEvents": {
+    "yellow": [
+      "Tropical Storm Watch",
+      "Hurricane Watch",
+      "Flood Watch",
+      "Storm Surge Watch"
+    ],
+    "orange": [
+      "Tropical Storm Warning",
+      "Flood Warning",
+      "Tornado Watch"
+    ],
+    "red": [
+      "Hurricane Warning",
+      "Tornado Warning",
+      "Flash Flood Warning",
+      "Flash Flood Emergency",
+      "Extreme Wind Warning",
+      "Storm Surge Warning"
+    ]
+  },
+  "yellowOnAnyWatchOrAdvisory": true,
+  "redOnSeverityExtreme": true,
+  "staleMultiplier": {
+    "amber": 2,
+    "red": 6
+  },
+  "allFeedsStaleMinutes": 30,
+  "stepDownHysteresisMinutes": 30,
+  "notify": {
+    "pressureDropMb": 10,
+    "gaugeRiseFt3h": 1,
+    "nearOutageMi": 2,
+    "staleFeedMinutes": 30
+  },
+  "pollSeconds": {
+    "nhc": 300,
+    "nws": 60,
+    "forecast": 900,
+    "usgs": 900,
+    "ndbc": 600,
+    "radar": 300,
+    "power": 180,
+    "odin": 900
+  },
+  "inConeYellowMaxMi": 300
+}

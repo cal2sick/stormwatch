@@ -1,0 +1,26 @@
+{
+  "name": "stormwatch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stormwatch: open-source live hurricane tracker you run on your own computer (informational only)",
+  "license": "MIT",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,yellow \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w server && npm run build -w web",
+    "start": "npm run build -w web && npm run start -w server",
+    "smoke": "npm run smoke -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "test": "npm run test -w server",
+    "serve": "npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
