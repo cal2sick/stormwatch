@@ -67,9 +67,12 @@ export class RadarPool {
     this.fadeTo(url);
     this.onState("ready", url);
   }
+  private hidden = false;
+  /** v0.6.1: hide the tile radar while the smooth-live overlay is on screen (loading continues underneath). */
+  setHidden(h: boolean) { if (h === this.hidden) return; this.hidden = h; this.fadeTo(this.shown); }
   private fadeTo(url: string | null) {
     this.shown = url;
-    for (const [u, id] of this.ids) if (this.m.getLayer(id)) this.m.setPaintProperty(id, "raster-opacity", u === url ? OPACITY : 0);
+    for (const [u, id] of this.ids) if (this.m.getLayer(id)) this.m.setPaintProperty(id, "raster-opacity", u === url && !this.hidden ? OPACITY : 0);
   }
   clear() { this.keep.clear(); this.show(null); }
 }

@@ -90,7 +90,7 @@ export function radarViewAt(t: number, now: number, live: boolean, latestScan: s
   if (live || Math.abs(t - now) <= 60_000 || (t <= now && t >= latestT)) {
     const s = iemStampAt(Math.min(live ? latestT : t, latestT));
     const ago = Math.max(0, Math.round((now - Date.parse(s.time)) / 60_000));
-    return { kind: "observed", url: iemRadarUrl(s.stamp), frameTime: s.time, latest: true, label: `Radar at ${clock(s.time)} (latest scan, ${ago} min ago)` };
+    return { kind: "observed", url: iemRadarUrl(s.stamp), frameTime: s.time, latest: true, label: `Latest radar scan: ${clock(s.time)} (${ago} min ago)` };
   }
   if (t < now) {
     if (t < now - ARCHIVE_DAYS * 86_400_000) return { kind: "none", reason: "too-old", label: `No radar: the archive used here only goes back ${ARCHIVE_DAYS} days.` };

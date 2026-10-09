@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.1 (2026-10-09, branch `preview`)
+
+Live radar that feels live, Change home, FSU default, and a real tap-on-map card.
+
+- **Tap card fix.** Root cause: there was no lookup for the tapped point at all; a tap only opened the popup of whatever big polygon was under it (a tornado watch or an outage region), and since one polygon covers the whole area, every tap showed the same card. Now each tap opens a card for that exact point from the new `/api/point`: OpenStreetMap place name, NWS gridpoint wind, gusts, rain chance and rain amount at the slider time, NWS alerts in effect there at that time, distance and direction to the storm at that time, nearest outages and the outage area. Every value has its source and time, or says "unavailable" (never another point's data). Debounced, the old request is cancelled on a new tap, cached per 0.01 deg.
+- **Close buttons everywhere.** Every map popup has a tap-sized ✕, Esc closes the topmost popup or the tap card, a tap on empty map closes the tap card, and the radar box can be hidden and reopened ("Radar ▸") like the map key.
+- **Live radar.** The server checks IEM for the newest NEXRAD scan every 60 s (was 5 min) and uses it as soon as its tiles exist; Live shows "Latest radar scan: HH:MM ET (X min ago)" with a pulsing LIVE dot and advances by itself.
+- **Smooth live radar (estimate)**, on by default with an off switch: the rain motion is measured from the last two scans (cross-correlation of two downsampled scans; NHC storm motion as fallback), and the latest scan slides along it until the next real scan arrives, then snaps to it. Labeled "Latest scan HH:MM ET + estimated motion (X min)". Covers ~1,100 mi around your home; turn it off for the full national radar.
+- **Change home.** Search or click the map; saved only in this browser, overrides `.env`; "Use Florida State University" and "Reset to default". Distance, threat, wind, alerts, outages, feed and the safety banner all follow it.
+- **Default home is Florida State University** when there is no browser home and no `HOME_LAT`/`HOME_LON` (`HOME_DEFAULT=off` restores storms-only mode).
+- New `/api/point` and `/api/radar-motion` routes, new tests (point card with two different points, cache per 0.01 deg, time filtering, unavailable instead of fallback; radar motion; FSU default). Opt-in live test: `LIVE=1 npx vitest run test/pointCard.test.ts` (Tallahassee vs Pensacola vs Miami).
+
 ## v0.6.0 (2026-10-09, branch `preview`)
 
 Power outage upgrade, modeled on how the best outage maps present the numbers (design ideas only; no outside data copied).

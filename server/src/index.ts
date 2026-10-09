@@ -10,6 +10,8 @@ import { cleanQuery, geocode, nearbyOutages, placeWeather, validLatLon } from ".
 import { getTimelines, listAdvisories, loadAdvisory } from "./advisories.js";
 import { threatForPlace, bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
 import { localFeed } from "./sources/localFeed.js";
+import { pointCard } from "./sources/pointCard.js";
+import { radarMotion, stormMotion, type RadarMotion } from "./sources/radarMotion.js";
 import { getOutageAreas, startOutageHistory } from "./sources/outageAreas.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
@@ -42,6 +44,34 @@ app.get("/api/geocode", quiet, async (req, reply) => {
   const q = cleanQuery((req.query as any)?.q);
   if (!q) return reply.code(400).send({ error: "Type at least 3 characters: an address, a city or a ZIP code." });
   try { return { results: await geocode(q) }; } catch { return reply.code(502).send({ error: "Location search is not reachable right now. Try again in a minute." }); }
+});
+/** v0.6.1 "Smooth live radar": drift of the rain pattern between the last two ~10-min-apart scans near a point (ESTIMATE).
+ * Cached per ~0.5 degree cell and scan, so it costs two small IEM images per new scan. Falls back to the storm's NHC motion. */
+const motionCache = new Map<string, { at: number; m: RadarMotion | null }>();
+app.get("/api/radar-motion", quiet, async (req, reply) => {
+  const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);
+  if (!p) return reply.code(400).send({ error: "bad lat/lon" });
+  const r = getSnapshot().radar;
+  if (!r?.latestScan || !r.prevScan || r.kind !== "iem") return { motion: null, note: "No recent radar scans to compare." };
+  const key = `${Math.round(p.lat * 2)}:${Math.round(p.lon * 2)}:${r.latestScan}`;
+  let hit = motionCache.get(key);
+  if (!hit) {
+    let m: RadarMotion | null = null;
+    try { m = await radarMotion(p.lat, p.lon, r.prevScan, r.latestScan); } catch { m = null; }
+    const s = getSnapshot().storms?.[0];
+    if (!m && s?.movementDirDeg != null && s.movementSpeedMph != null) m = stormMotion(s.movementDirDeg, s.movementSpeedMph, p.lat, p.lon);
+    hit = { at: Date.now(), m }; motionCache.set(key, hit);
+    for (const [k, v] of motionCache) if (Date.now() - v.at > 30 * 60_000) motionCache.delete(k);
+  }
+  return { motion: hit.m, latestScan: r.latestScan };
+});
+/** v0.6.1 tap card for one exact point at time t (ms or ISO; default now). */
+app.get("/api/point", quiet, async (req, reply) => {
+  const q = req.query as any, p = validLatLon(q?.lat, q?.lon);
+  if (!p) return reply.code(400).send({ error: "bad lat/lon" });
+  const t = q?.t ? (/^\d+$/.test(String(q.t)) ? Number(q.t) : Date.parse(String(q.t))) : Date.now();
+  if (!Number.isFinite(t)) return reply.code(400).send({ error: "bad time" });
+  try { return await pointCard(p.lat, p.lon, t); } catch { return reply.code(502).send({ error: "Data for this point is not available right now." }); }
 });
 app.get("/api/place", quiet, async (req, reply) => {
   const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);

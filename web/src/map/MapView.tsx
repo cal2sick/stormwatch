@@ -4,6 +4,9 @@ import type { Hazard, Snapshot, Storm, StormGis } from "../types";
 import { fmtClockET, fmtET, staleness } from "../time";
 import { addStormLayers, STORM_LAYER_IDS, updateStormLayers, WW_HEX } from "./ConeLayer";
 import { RadarPool, type RadarLoadState } from "./RadarLayer";
+import { estimateMinutes, MAX_EXTRAPOLATE_MIN, SmoothRadar } from "./SmoothRadar";
+import type { RadarMotion } from "../types";
+import TapCard, { type TapPoint } from "../hud/TapCard";
 import { LAYER_LABELS, VIEW_LABELS, type LayerKey, type ViewMode } from "./layers";
 import { addHazardLayers, HAZARD_LAYER_IDS, updateHazardLayers } from "./HazardLayer";
 import { activeAt, CONE_TEXT, FLOOD_KINDS, HAZARD_HEX, HAZARD_NAME, hazardFeatures, TORNADO_KINDS, untilET } from "../hazards";
@@ -38,8 +41,14 @@ function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); retur
 export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean; radii?: RadiiState }
 export interface Landmark { name: string; lat: number; lon: number; kind: string; source?: string }
 
-export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null, outageAreas = null }: {
+const POINT_LAYERS = ["outages", "gauges", "buoys", "tides", "cameras", "fcst-pts", "place-outages", "po-cluster"];
+const compass = (d: number) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((d % 360) + 360) % 360 / 45) % 8];
+
+export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null, outageAreas = null,
+  smoothRadar = true, onSmoothRadar, homePoint = null, pickingHome = false, onMapPick }: {
   outageAreas?: OutageAreas | null;
+  smoothRadar?: boolean; onSmoothRadar?: (v: boolean) => void; homePoint?: { lat: number; lon: number } | null;
+  pickingHome?: boolean; onMapPick?: (p: { lat: number; lon: number }) => void;
   evacZones?: GeoJSON.FeatureCollection | null; onJump?: (t: number | null) => void;
   place?: { name: string; lat: number; lon: number } | null; placeOutages?: { lat: number; lon: number; customers: number; cause: string | null; etr: string | null; source: string; distanceMi: number }[];
   ghost?: SliderPos | null; hazards?: Hazard[]; hazardTime: number; mode?: ViewMode; onMode?: (m: ViewMode) => void;
@@ -48,6 +57,27 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<MlMap | null>(null);
+  // v0.6.1: tap card + closable popups (X on every popup, Esc closes the topmost).
+  const [tap, setTap] = useState<TapPoint | null>(null);
+  const tapRef = useRef<TapPoint | null>(null); tapRef.current = tap;
+  const pickRef = useRef(false); pickRef.current = pickingHome;
+  const popups = useRef<maplibregl.Popup[]>([]);
+  const track = (p: maplibregl.Popup) => { popups.current.push(p); p.on("close", () => { popups.current = popups.current.filter((x) => x !== p); }); return p; };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const open = popups.current.filter((p) => p.isOpen());
+      if (open.length) open.at(-1)!.remove(); else if (tapRef.current) setTap(null);
+    };
+    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const tapMk = useRef<Marker | null>(null);
+  useEffect(() => {
+    const m = map.current; tapMk.current?.remove(); tapMk.current = null;
+    if (!m || !tap) return;
+    const d = document.createElement("div"); d.className = "tap-pin"; d.dataset.testid = "tap-pin";
+    tapMk.current = new Marker({ element: d }).setLngLat([tap.lon, tap.lat]).addTo(m);
+  }, [tap?.lat, tap?.lon, tap?.seq]);
   const [ready, setReady] = useState(false);
   const baseLayers = useRef<string[]>([]);
   const markers = useRef<Marker[]>([]);
@@ -87,10 +117,8 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
           if (!ps.length) return;
           const esc = (x: string) => x.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
           const rows = ps.map((p) => { const h = hzRef.current.find((x) => x.id === p.id); return h ? `<b>${esc(h.title)}</b><br>${esc(h.plain)}<br>Until ${untilET(h.expires)} · ${esc(h.issuer)}${h.url && /^https:/.test(h.url) && !/api\.weather\.gov/.test(h.url) ? ` · <a href="${h.url}" target="_blank" rel="noreferrer">details</a>` : ""}<br><small>Source: ${esc(h.source)}</small>` : ""; });
-          new maplibregl.Popup({ closeButton: true, className: "hud-popup", maxWidth: "340px" }).setLngLat(e.lngLat).setHTML(rows.join("<hr>")).addTo(m);
+          void rows; // v0.6.1: hazard details now appear in the tap card for the exact point (see the generic click below).
         });
-        m.on("mouseenter", "hz-fill", () => (m.getCanvas().style.cursor = "pointer"));
-        m.on("mouseleave", "hz-fill", () => (m.getCanvas().style.cursor = ""));
         for (const id of ["tm-trail", "tm-ring", "tm-toa", "tm-wind"]) m.addSource(id, { type: "geojson", data: EMPTY });
         // Wind field at the slider time: NHC 34 / 50 / 64-knot radii by quadrant, interpolated in time.
         m.addLayer({ id: "tm-wind-fill", type: "fill", source: "tm-wind", paint: { "fill-color": ["match", ["get", "kt"], 64, "#d6336c", 50, "#f08c00", "#ffd43b"], "fill-opacity": 0.16 } });
@@ -137,12 +165,8 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
           const src = m.getSource("place-outages") as GeoJSONSource;
           try { const z = await src.getClusterExpansionZoom((f.properties as any).cluster_id); m.easeTo({ center: (f.geometry as GeoJSON.Point).coordinates as [number, number], zoom: z }); } catch { /* ignore */ }
         });
-        for (const id of ["out-regions-fill", "out-counties-fill"]) {
-          m.on("click", id, (e) => {
-            const p = e.features?.[0]?.properties as Record<string, any> | undefined; if (!p) return;
-            new maplibregl.Popup({ closeButton: true, className: "hud-popup", maxWidth: "320px" }).setLngLat(e.lngLat).setHTML(p.popup ?? "").addTo(m);
-          });
-        }
+        // v0.6.1: outage-area polygons no longer open their own popup (a big polygon made every tap look the same);
+        // their numbers are listed in the tap card for the exact point instead.
         for (const id of ["outages", "gauges", "buoys", "tides", "cameras"]) m.addSource(id, { type: "geojson", data: EMPTY });
         m.addLayer({ id: "cameras", type: "circle", source: "cameras", paint: { "circle-radius": 5, "circle-color": "#f2e9c9", "circle-stroke-color": "#3b5bdb", "circle-stroke-width": 2 } });
         m.addLayer({ id: "tides", type: "circle", source: "tides", paint: { "circle-radius": 5, "circle-color": ["step", ["get", "above"], "#4dabf7", 1, "#f08c00", 2, "#e03131"], "circle-stroke-color": "#070909", "circle-stroke-width": 1.5 } });
@@ -157,11 +181,26 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
           m.on("click", id, (e) => {
             const p = e.features?.[0]?.properties as Record<string, any> | undefined;
             if (!p) return;
-            new maplibregl.Popup({ closeButton: false, className: "hud-popup", maxWidth: "340px" }).setLngLat(e.lngLat).setHTML(p.popup ?? `<b>${p.etLabel ?? ""}</b>`).addTo(m);
+            track(new maplibregl.Popup({ closeButton: true, className: "hud-popup", maxWidth: "340px" }).setLngLat(e.lngLat).setHTML(p.popup ?? `<b>${p.etLabel ?? ""}</b>`).addTo(m));
           });
           m.on("mouseenter", id, () => (m.getCanvas().style.cursor = "pointer"));
           m.on("mouseleave", id, () => (m.getCanvas().style.cursor = ""));
         }
+        // v0.6.1 generic tap: open the area card for the exact tapped point (unless a point feature was hit,
+        // a home pick is active, or a card is already open: then a tap on empty map closes it).
+        m.on("click", (e) => {
+          if (pickRef.current) return;
+          const pointLayers = POINT_LAYERS.filter((id) => m.getLayer(id));
+          if (pointLayers.length && m.queryRenderedFeatures(e.point, { layers: pointLayers }).length) return;
+          if (tapRef.current) { setTap(null); return; }
+          const hz = m.getLayer("hz-fill") ? m.queryRenderedFeatures(e.point, { layers: ["hz-fill"] }) : [];
+          const titles = [...new Set(hz.map((f) => hzRef.current.find((x) => x.id === (f.properties as any)?.id)?.title).filter(Boolean) as string[])];
+          const areaL = ["out-regions-fill", "out-counties-fill"].filter((id) => m.getLayer(id));
+          const areas = [...new Set((areaL.length ? m.queryRenderedFeatures(e.point, { layers: areaL }) : []).map((f) => {
+            const d = document.createElement("div"); d.innerHTML = String((f.properties as any)?.popup ?? ""); d.querySelectorAll("br").forEach((b) => b.replaceWith(" · "));
+            return (d.textContent ?? "").replace(/\s+/g, " ").trim(); }).filter(Boolean))];
+          setTap((t) => ({ lat: Math.round(e.lngLat.lat * 1e4) / 1e4, lon: Math.round(e.lngLat.lng * 1e4) / 1e4, seq: (t?.seq ?? 0) + 1, hazards: titles, areas }));
+        });
         setReady(true);
       });
     })();
@@ -258,6 +297,15 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
     if (moved && needsPan(p.x, p.y, c.clientWidth, c.clientHeight, 0.7)) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 300 });
   }, [ready, main?.lat, main?.lon, main?.label, main?.uncertaintyMi, main?.live, main?.radii, storm?.lat, storm?.lon, gis]);
   useEffect(() => () => { ghostMk.current?.remove(); ghostMk.current = null; }, []);
+
+  // v0.6.1 "Change home" → "Click on the map": the next map click sets home (browser-only).
+  useEffect(() => {
+    const m = map.current; if (!ready || !m || !pickingHome || !onMapPick) return;
+    m.getCanvas().style.cursor = "crosshair";
+    const h = (e: any) => onMapPick({ lat: Math.round(e.lngLat.lat * 1e4) / 1e4, lon: Math.round(e.lngLat.lng * 1e4) / 1e4 });
+    m.once("click", h);
+    return () => { m.off("click", h); m.getCanvas().style.cursor = ""; };
+  }, [ready, pickingHome]);
 
   // Selected location (browser-only): pin + fly there once per new place; nearby outage points.
   const placeMk = useRef<Marker | null>(null);
@@ -382,10 +430,37 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
     return () => clearTimeout(t);
   }, [ready, radarOn, radarState.s === "ready", latestScan, fcRadar?.initTime]);
   const radarLoading = radarOn && wantUrl != null && radarState.url !== wantUrl;
+  // v0.6.1 Smooth live radar (estimate): only in Live mode, IEM radar, not looping.
+  const smoothScan = snap?.radar?.latestScan ?? (rv ? null : latestScan);
+  const smoothActive = radarOn && smoothRadar && phase === "live" && !looping && !rv && !!smoothScan && !!homePoint;
+  const [motion, setMotion] = useState<RadarMotion | null>(null);
+  const [smoothLoaded, setSmoothLoaded] = useState(false);
+  const smoothRef = useRef<SmoothRadar | null>(null);
+  const hpKey = homePoint ? `${homePoint.lat.toFixed(2)},${homePoint.lon.toFixed(2)}` : "";
+  useEffect(() => {
+    if (!smoothActive || !homePoint) return;
+    let stop = false;
+    fetch(`/api/radar-motion?lat=${homePoint.lat}&lon=${homePoint.lon}`).then((r) => r.json()).then((d) => { if (!stop) setMotion(d.motion ?? null); }).catch(() => { if (!stop) setMotion(null); });
+    return () => { stop = true; };
+  }, [smoothActive, smoothScan, hpKey]);
+  useEffect(() => {
+    const m = map.current; if (!ready || !m) return;
+    if (!smoothRef.current) smoothRef.current = new SmoothRadar(m, (ok) => setSmoothLoaded(ok));
+    if (smoothActive && homePoint && smoothScan) smoothRef.current.show(homePoint.lat, homePoint.lon, smoothScan, motion);
+    else { smoothRef.current.hide(); setSmoothLoaded(false); }
+  }, [ready, smoothActive, smoothScan, hpKey, motion]);
+  useEffect(() => { poolRef.current?.setHidden(smoothActive && smoothLoaded); }, [smoothActive, smoothLoaded, radarState.url]);
+  const estMin = smoothScan ? estimateMinutes(smoothScan, tNow) : 0;
+  const scanAgo = smoothScan ? Math.max(0, Math.round((tNow - Date.parse(smoothScan)) / 60_000)) : 0;
+  const smoothLabel = smoothActive && smoothScan
+    ? `Latest scan ${fmtClockET(smoothScan)} ET + estimated motion (${Math.round(estMin)} min)${motion ? ` · rain moving ${compass(motion.towardDeg)} ${motion.speedMph} mph${motion.method === "storm-motion" ? " (storm motion)" : ""}` : " · motion unknown, holding the scan still"}${scanAgo > MAX_EXTRAPOLATE_MIN ? " · newest scan is late" : ""}`
+    : null;
   const shownLabel = loopFrame
     ? `${loopFrame.forecast ? "Playing FORECAST radar" : "Replaying the last 2 hours"} · ${loopFrame.forecast ? "for " : "radar at "}${fmtClockET(loopFrame.time)} ET`
-    : view.label;
-  (window as any).__radar = { kind: view.kind, phase, url: wantUrl, shownUrl: radarState.url, state: radarState.s, frameTime: view.kind === "none" ? null : view.frameTime, label: shownLabel };
+    : smoothLabel ?? view.label;
+  (window as any).__radar = { kind: view.kind, phase, url: wantUrl, shownUrl: radarState.url, state: radarState.s, frameTime: view.kind === "none" ? null : view.frameTime, label: shownLabel,
+    latestScan: smoothScan, checked: snap?.radar?.checked ?? null, smooth: { active: smoothActive, loaded: smoothLoaded, motion, estMin } };
+  const [radarBoxOpen, setRadarBoxOpen] = useState(true);
   // Map key: collapsed by default so it never covers the map; the choice is remembered on this device.
   const [keyOpen, setKeyOpenState] = useState<boolean>(() => { try { return localStorage.getItem("sw-mapkey") === "open"; } catch { return false; } });
   const setKeyOpen = (v: boolean) => { setKeyOpenState(v); try { localStorage.setItem("sw-mapkey", v ? "open" : "closed"); } catch { /* private mode */ } };
@@ -416,13 +491,19 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
       </div>
       {phase === "forecast" && <div className="fc-hatch" aria-hidden="true" />}
       {phase === "forecast" && <div className="fc-flag" data-testid="forecast-flag">FORECAST, not observed</div>}
-      {radarOn && (
+      {radarOn && !radarBoxOpen && <button className="radar-ctl-btn" data-testid="radar-ctl-open" onClick={() => setRadarBoxOpen(true)}>{phase === "live" ? "● " : ""}Radar ▸</button>}
+      {radarOn && radarBoxOpen && (
         <div className={`radar-ctl ph-${phase}`} data-testid="radar-ctl">
+          <button className="x-close sm" aria-label="Hide radar info" title="Hide (reopen with Radar ▸)" onClick={() => setRadarBoxOpen(false)} data-testid="radar-ctl-close">✕</button>
           {loopFrames.length > 1 && <button className="btn on" data-testid="radar-loop" onClick={() => setLoopIdx((i) => (i == null ? 0 : null))}>
             {looping ? "❚❚ Pause" : phase === "forecast" ? "▶ Play forecast radar" : "▶ Radar: last 2 hours"}</button>}
           <span className={`rv-badge ${loopFrame ? (loopFrame.forecast ? "fc" : "past") : view.kind === "forecast" ? "fc" : view.kind === "observed" && view.latest ? "live" : view.kind === "observed" ? "past" : "none"}`}>
             {loopFrame ? (loopFrame.forecast ? "FORECAST" : "REPLAY") : view.kind === "forecast" ? "FORECAST" : view.kind === "observed" && view.latest ? "LIVE" : view.kind === "observed" ? "PAST" : "NO RADAR"}</span>
-          <span data-testid="radar-note">{shownLabel}</span>
+          {phase === "live" && !looping && <span className="live-dot" aria-hidden="true" />}
+          <span data-testid="radar-note">{phase === "live" && !looping ? <b>LIVE </b> : null}{shownLabel}</span>
+          {phase === "live" && !rv && onSmoothRadar && <label className="smooth-tg" title="Between real radar scans (every ~5 min), slide the latest scan along the measured rain motion. An estimate; it snaps to the real scan when it arrives.">
+            <input type="checkbox" checked={smoothRadar} onChange={(e) => onSmoothRadar(e.target.checked)} data-testid="smooth-toggle" /> Smooth live radar (estimate)</label>}
+          {smoothActive && smoothLoaded && <span className="tm-src">Smooth view covers ~1,100 mi around home; turn it off for the full national radar.</span>}
           {radarLoading && <span className="rv-loading" data-testid="radar-loading">{radarState.s === "slow" ? "slow connection, showing what has loaded" : "loading radar… (previous image kept)"}</span>}
           {looping && <div className="frame-dots">{loopFrames.map((_, i) => <i key={i} className={i === loopIdx ? "on" : ""} />)}</div>}
         </div>
@@ -452,6 +533,8 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
         {layers.satellite && <div>Satellite: GOES-19 infrared (cloud tops; brighter = colder, stronger storms) at {fmtET(goes.time)}{goes.clamped ? " (latest available, images arrive about 30 minutes late; not a forecast)" : ""} · NOAA / NASA GIBS</div>}
         {layers.nightlights && <div>NASA night lights satellite ({yesterdayUtc()}, clouds block it; post-storm use)</div>}
       </div>}
+      {tap && <TapCard point={tap} time={sliderT} onClose={() => setTap(null)}
+        storm={storm ? (ghost ? { name: storm.name, lat: ghost.lat, lon: ghost.lon, live: !!ghost.live } : { name: storm.name, lat: storm.lat, lon: storm.lon, live: true }) : null} />}
     </div>
   );
 }

@@ -15,7 +15,7 @@ All sources are free and public. No API keys (one optional camera source takes y
 | Storm timeline: past positions | NHC ATCF b-deck best track `https://ftp.nhc.noaa.gov/atcf/btk/b<id>.dat` (BEST, with 34/50/64-kt radii) | no | 5 min |
 | Storm timeline: official forecast | NHC Forecast/Advisory text (TCM, `forecastAdvisory.url` in CurrentStorms.json): taus, intensity, wind radii | no | 5 min |
 | Older official forecasts (advisory selector) | NHC ATCF a-deck OFCL `https://ftp.nhc.noaa.gov/atcf/aid_public/a<id>.dat.gz` | no | 60 min |
-| Radar (default) | NOAA NEXRAD base reflectivity composite (n0q) via Iowa Environmental Mesonet: scan list `json/radar.py`, tiles `cache/tile.py/1.0.0/ridge::USCOMP-N0Q-<YYYYMMDDHHMM>`; archived 5-min scans match past slider times (7 days) | no | 5 min |
+| Radar (default) | NOAA NEXRAD base reflectivity composite (n0q) via Iowa Environmental Mesonet: scan list `json/radar.py`, tiles `cache/tile.py/1.0.0/ridge::USCOMP-N0Q-<YYYYMMDDHHMM>`; archived 5-min scans match past slider times (7 days) | no | 60 s (v0.6.1) |
 | Radar (backup only) | RainViewer public API + tiles, used only if IEM is down | no | 5 min |
 | Satellite (optional layer) | GOES-19 (GOES-East) ABI band 13 clean infrared via NASA GIBS WMTS, time-matched to the slider (about 30 min latency) | no | tiles |
 | Coastal water levels | NOAA CO-OPS Tides and Currents API, water level and predicted tide on MHHW (stations in `config/thresholds.json` `coopsStations`) | no | 6 min |
@@ -90,3 +90,13 @@ NHC wind speed probabilities, storm surge (P-Surge), WPC rainfall, model tracks 
 - **Forecast radar (0-3 h):** NOAA HRRR simulated composite reflectivity, tiles from Iowa Environmental Mesonet: `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/hrrr::REFD-F{minute}-{runYYYYMMDDHHMM}/{z}/{x}/{y}.png`, run/valid metadata at `https://mesonet.agron.iastate.edu/data/gis/images/4326/hrrr/refd_{minute}.json`. Free, keyless; polled every 10 min (`hrrr` in thresholds). Model output, always labeled forecast. 15-minute steps up to 5 h after the run, hourly after.
 - **Past radar:** the IEM n0q composite archive, one tile set per 5-minute scan: `ridge::USCOMP-N0Q-{YYYYMMDDHHMM}`.
 - **Latest for <place>:** `api.weather.gov` alerts for the point, `/products/types/{HLS,NOW,SPS}/locations/{office}` and the product text (headline quoted verbatim), the nearest observation station's last observations, and NWS local storm reports via `https://mesonet.agron.iastate.edu/geojson/lsr.geojson?wfos={office}&hours=12`. Route `/api/localfeed` runs with request logging off and a 2-minute in-memory cache; nothing is written to disk.
+
+## Live radar, smooth estimate and tap card (v0.6.1)
+
+| What | Source | Key? | Refresh |
+| --- | --- | --- | --- |
+| Smooth live radar image + motion | IEM NEXRAD n0q WMS-T `cgi-bin/wms/nexrad/n0q-t.cgi` (EPSG:3857, TIME=scan); motion = cross-correlation of two 192 px scans 10 min apart; fallback NHC storm motion | no | per new scan |
+| Tap card: place name | OpenStreetMap Nominatim reverse geocode (cached per 0.01 deg, 5 min) | no | per tap |
+| Tap card: wind, gusts, rain chance, rain amount | NWS `api.weather.gov/points` -> `forecastGridData` at the slider time | no | per tap (5 min cache) |
+| Tap card: alerts | NWS `alerts/active?point=lat,lon`, filtered by onset/ends to the slider time | no | per tap (5 min cache) |
+| Tap card: outages | same utility feeds / ORNL ODIN as "Power outages near" | no | per tap |

@@ -47,7 +47,7 @@
     "forecast": 900,
     "usgs": 900,
     "ndbc": 600,
-    "radar": 300, "hrrr": 600,
+    "radar": 60, "hrrr": 600,
     "power": 180,
     "odin": 900,
     "coops": 360,

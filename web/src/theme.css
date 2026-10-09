@@ -327,3 +327,31 @@ body { font-size: 14px; }
 .out-src { display: block; font-size: 11px; }
 .out-table td:nth-child(n+2), .out-table th:nth-child(n+2) { white-space: nowrap; } .out-table td:nth-child(5) { white-space: normal; }
 .map-legend { max-height: min(40%, 260px); }
+
+/* v0.6.1 live radar */
+.radar-ctl .live-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff4d4f; animation: livepulse 1.4s infinite; }
+.radar-ctl .smooth-tg { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .radar-ctl .live-dot { animation: none; } }
+.home-panel .home-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.home-panel .home-name { font-weight: bold; }
+.btn.picking { background: #fab005; color: #000; }
+
+/* v0.6.1 tap card + close buttons */
+.tap-card { position: absolute; top: 52px; right: 10px; z-index: 5; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 120px); overflow: auto;
+  background: linear-gradient(160deg, #0b1214f2, #070909f2); border: 1px solid var(--line2); border-left: 3px solid var(--threat, #7fae8c); padding: 12px 14px 10px; font-size: 12px; box-shadow: 0 8px 30px #000a; }
+.tap-card .tc-place { font-size: 15px; font-weight: bold; padding-right: 36px; }
+.tap-card .tc-coords { color: #8b938d; font-size: 11px; margin: 2px 0 8px; }
+.tap-card .tc-big { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.tap-card .tc-big div { background: #ffffff08; padding: 6px 8px; }
+.tap-card .tc-big b { display: block; font-size: 20px; line-height: 1.1; }
+.tap-card .tc-big span { color: #a9b2ab; font-size: 11px; }
+.tap-card .tc-src { display: block; color: #6f7a72; font-size: 10px; }
+.tap-card ul { margin: 4px 0; padding-left: 16px; }
+.tap-card .tc-more p { margin: 6px 0; }
+.x-close { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; display: grid; place-items: center; background: #ffffff10; color: var(--text); border: 1px solid var(--line2); cursor: pointer; font-size: 15px; line-height: 1; z-index: 1; }
+.x-close:hover, .x-close:focus-visible { background: #ffffff25; }
+.x-close.sm { position: static; width: 26px; height: 26px; font-size: 12px; flex: none; }
+.radar-ctl-btn { position: absolute; left: 6px; bottom: 6px; z-index: 2; background: #070909e6; color: var(--text); border: 1px solid var(--line2); padding: 6px 10px; cursor: pointer; font-size: 12px; }
+.hud-popup .maplibregl-popup-close-button { width: 32px; height: 32px; font-size: 20px; color: var(--text); right: 0; top: 0; }
+.hud-popup .maplibregl-popup-content { padding-right: 36px; }
+.tap-pin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; background: #ffffff33; box-shadow: 0 0 0 4px #ffffff22; }

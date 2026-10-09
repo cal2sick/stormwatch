@@ -23,14 +23,21 @@ export function pickIemFrames(scans: { ts: string }[], max = 13): { time: string
   return out;
 }
 
+/** Scans whose tiles should exist: drop any newer than `minAgeMs` (the IEM list can run ahead of the tile cache). */
+export function usableScans(scans: { ts: string }[], now: number, minAgeMs = 2 * 60_000): { ts: string }[] {
+  return scans.filter((s) => { const t = Date.parse(s.ts.replace(/Z?$/, "Z")); return isFinite(t) && now - t >= minAgeMs; });
+}
+
 export async function fetchRadar(): Promise<{ radar: RadarFrames; sourceTime: string | null }> {
   try {
     const end = new Date(), start = new Date(end.getTime() - 2.5 * 3_600_000);
     const r = await getJson<{ scans: { ts: string }[] }>(iemListUrl(start, end));
-    // The newest scan's tiles can lag a few minutes; skip it.
-    const frames = pickIemFrames((r.scans ?? []).slice(0, -1));
+    // v0.6.1: polled every 60 s. The newest scan is used as soon as it is ~2 min old (IEM tiles lag a little behind the list).
+    const scans = usableScans(r.scans ?? [], end.getTime());
+    const frames = pickIemFrames(scans);
     if (!frames.length) throw new Error("IEM returned no radar scans");
-    return { radar: { host: IEM_TILE_HOST, kind: "iem", frames, generated: frames.at(-1)!.time }, sourceTime: frames.at(-1)!.time };
+    const latestScan = frames.at(-1)!.time, prevScan = scans.length > 1 ? new Date(Date.parse(scans.at(-3)?.ts.replace(/Z?$/, "Z") ?? scans[0].ts.replace(/Z?$/, "Z"))).toISOString() : null;
+    return { radar: { host: IEM_TILE_HOST, kind: "iem", frames, generated: latestScan, latestScan, prevScan, checked: end.toISOString() }, sourceTime: latestScan };
   } catch (e) {
     const r = await getJson<{ host: string; generated: number; radar: { past: { time: number; path: string }[] } }>(RAINVIEWER_URL).catch(() => { throw e; });
     const frames = (r.radar?.past ?? []).map((f) => ({ time: new Date(f.time * 1000).toISOString(), path: f.path }));

@@ -18,7 +18,8 @@ export function loadPlace(): Place | null {
   try { const p = JSON.parse(localStorage.getItem(KEY) ?? "null"); return p && Number.isFinite(p.lat) && Number.isFinite(p.lon) ? p : null; } catch { return null; }
 }
 
-export function useSelectedPlace() {
+/** `homeOverride`: a home set in this browser ("Change home"); used for all place lookups when no place is searched. */
+export function useSelectedPlace(homeOverride: Place | null = null) {
   const [place, setPlaceState] = useState<Place | null>(loadPlace);
   const [weather, setWeather] = useState<PlaceWeather | null>(null);
   const [outages, setOutages] = useState<NearbyOutages | null>(null);
@@ -29,7 +30,10 @@ export function useSelectedPlace() {
     try { if (p) localStorage.setItem(KEY, JSON.stringify(p)); else localStorage.removeItem(KEY); } catch { /* ignore */ }
     setWeather(null); setOutages(null); setOutageErr(null); setEvac(null); setEvacErr(null); setPlaceState(p);
   };
-  const q = place ? `lat=${place.lat}&lon=${place.lon}` : null;
+  const point = place ?? homeOverride;
+  const q = point ? `lat=${point.lat}&lon=${point.lon}` : null;
+  // Clear stale results when the looked-up point changes (e.g. home changed).
+  useEffect(() => { setWeather(null); setOutages(null); setOutageErr(null); setEvac(null); setEvacErr(null); }, [q]);
   // NWS hourly wind + alerts for the place: on select, then every 10 min (alerts) while selected.
   useEffect(() => {
     if (!q) return;
@@ -62,5 +66,5 @@ export function useSelectedPlace() {
       .catch(() => { if (!stop) setEvacErr("Evacuation zone lookup is not reachable right now."); });
     return () => { stop = true; };
   }, [q]);
-  return { place, setPlace, weather, outages, outageErr, evac, evacErr };
+  return { place, point, setPlace, weather, outages, outageErr, evac, evacErr };
 }

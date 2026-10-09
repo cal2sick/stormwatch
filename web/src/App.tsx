@@ -34,6 +34,9 @@ import LocationSearch, { EvacZone, OutagesNearby } from "./hud/LocationSearch";
 import OutageSummary from "./hud/OutageSummary";
 import { useOutageAreas } from "./useOutageAreas";
 import LocalFeed, { useFeedPoint } from "./hud/LocalFeed";
+import HomePanel from "./hud/HomePanel";
+import { useBrowserHome } from "./useHome";
+import { distanceMi } from "./geo";
 
 function usePref<T>(key: string, init: T) {
   const [v, setV] = useState<T>(() => { try { const s = localStorage.getItem("stormwatch:" + key); return s ? { ...init, ...JSON.parse(s) } : init; } catch { return init; } });
@@ -42,11 +45,25 @@ function usePref<T>(key: string, init: T) {
 }
 
 export default function App() {
-  const { snap, connected } = useSnapshot();
+  const { snap: rawSnap, connected } = useSnapshot();
+  // v0.6.1: a home chosen in this browser ("Change home") overrides .env and the FSU default everywhere in the UI.
+  const [browserHome, setBrowserHome] = useBrowserHome();
+  const [pickingHome, setPickingHome] = useState(false);
+  const snap = rawSnap && browserHome ? { ...rawSnap, home: { name: browserHome.name.split(",")[0], lat: browserHome.lat, lon: browserHome.lon, configured: true, source: "browser" as const },
+    storms: rawSnap.storms.map((s) => ({ ...s, distanceMi: distanceMi(browserHome.lat, browserHome.lon, s.lat, s.lon) })) } : rawSnap;
+  // Safety banner for a browser home: its own NWS point alerts every 2 min (the server's banner data is for the .env/default home).
+  const [homeAlerts, setHomeAlerts] = useState<NonNullable<typeof rawSnap>["alerts"] | null>(null);
+  useEffect(() => {
+    setHomeAlerts(null); if (!browserHome) return;
+    let stop = false;
+    const load = () => fetch(`/api/place?lat=${browserHome.lat}&lon=${browserHome.lon}`).then((r) => r.ok ? r.json() : null).then((d) => { if (!stop && d) setHomeAlerts(d.alerts ?? []); }).catch(() => {});
+    load(); const id = setInterval(load, 120_000); return () => { stop = true; clearInterval(id); };
+  }, [browserHome?.lat, browserHome?.lon]);
+  const homeSource = browserHome ? "browser" as const : !rawSnap?.home.configured ? "none" as const : rawSnap.home.source === "env" ? "env" as const : "default" as const;
   const gis = useGis(snap?.gisVersion);
   const now = useNow(1000);
   const [layers, setLayers] = usePref<Record<LayerKey, boolean>>("layers", DEFAULT_LAYERS);
-  const [prefs, setPrefs] = usePref("prefs", { voice: false, notify: false, lowBw: false, mode: "standard" as ViewMode });
+  const [prefs, setPrefs] = usePref("prefs", { voice: false, notify: false, lowBw: false, mode: "standard" as ViewMode, smoothRadar: true });
   const hazards = useHazards(snap?.hazardsVersion);
   const [stormId, setStormId] = useState<string | null>(null);
   const [tm, setTm] = useState<SliderState | null>(null);
@@ -55,12 +72,12 @@ export default function App() {
   const timelines = useTimeline(snap?.gisVersion);
   const [advPick, setAdvPick] = useState<string | null>(null);
   useAlerts(snap, prefs.voice, prefs.notify);
-  const { place, setPlace, weather: placeWx, outages: placeOut, outageErr, evac, evacErr } = useSelectedPlace();
-  // Readouts (distance, wind at the place, alerts) use the searched place when one is selected; else .env home.
-  const readSnap = snap && place ? { ...snap, home: { name: place.name.split(",")[0], lat: place.lat, lon: place.lon, configured: true },
+  const { place, point, setPlace, weather: placeWx, outages: placeOut, outageErr, evac, evacErr } = useSelectedPlace(browserHome);
+  // Readouts (distance, wind at the place, alerts) use the searched place, else the browser home; else the server home (.env or FSU).
+  const readSnap = snap && point ? { ...snap, home: { name: point.name.split(",")[0], lat: point.lat, lon: point.lon, configured: true },
     forecast: placeWx?.forecast ?? null, alerts: placeWx?.alerts ?? [] } : snap;
   const hazardTime = tm?.time ?? now;
-  const feedPoint = useFeedPoint(place, snap);
+  const feedPoint = useFeedPoint(point, snap);
   const outageAreas = useOutageAreas();
   const shownLayers = effectiveLayers(layers, prefs.mode);
 
@@ -77,7 +94,7 @@ export default function App() {
     ? { ...snap, threat: { ...snap.threat, level: "DATA STALE" as const, reasons: ["No fresh data for 30+ min on this device. Check official sources.", ...snap.threat.reasons.map((r) => `(last known) ${r}`)] } }
     : snap;
   // A searched place gets its own threat level (same rules, its own alerts and distance); else the .env home.
-  const threatView = view && place && placeWx?.threat && view.threat.level !== "DATA STALE" ? { ...view, threat: { ...placeWx.threat, reasons: [`For ${place.name.split(",")[0]} (the place you looked up):`, ...placeWx.threat.reasons] } } : view;
+  const threatView = view && point && placeWx?.threat && view.threat.level !== "DATA STALE" ? { ...view, threat: { ...placeWx.threat, reasons: [`For ${point.name.split(",")[0]}${place ? " (the place you looked up)" : " (your home)"}:`, ...placeWx.threat.reasons] } } : view;
   const level = threatView?.threat.level ?? "DATA STALE";
   useEffect(() => { document.documentElement.style.setProperty("--threat", threatColor[level]); }, [level]);
 
@@ -95,7 +112,7 @@ export default function App() {
       {snap && !snap.home.configured && <div className="banner setup" role="alert">
         No location set, so the map shows storms only. To get distance, local alerts, winds and a threat level for your place: copy <code>.env.example</code> to <code>.env</code>, set <code>HOME_LAT</code> and <code>HOME_LON</code> (decimal degrees, e.g. from a map app), then restart with <code>npm start</code>. Your location stays on your computer.
       </div>}
-      <HazardBanner snap={snap} now={now} />
+      <HazardBanner snap={snap && browserHome ? { ...snap, alerts: homeAlerts ?? [], homeHazardIds: [] } : snap} now={now} />
       <header className="topbar">
         <div className="brand">
           <div className="title">STORMWATCH</div>
@@ -119,6 +136,10 @@ export default function App() {
       </header>
       <main className={`grid ${more ? "" : "simple"}`}>
         <aside className="col left">
+          <Panel title="Your home" source="saved only in this browser; default Florida State University" time={null} area="home">
+            <HomePanel home={snap?.home.configured ? snap.home : null} source={homeSource} browserHome={browserHome} picking={pickingHome} onPicking={setPickingHome}
+              onSet={(p) => { setBrowserHome(p); setPickingHome(false); }} />
+          </Panel>
           <Panel title="Where will the storm be? Pick a time" feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine"
             right={<button className="btn" onClick={() => setMore((v) => !v)}>{more ? "Show less" : "Show more panels"}</button>}>
             <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} jump={jump} />
@@ -129,18 +150,18 @@ export default function App() {
           <Panel title="Look up a place" source="US Census Geocoder, OpenStreetMap Nominatim fallback" time={null} area="place">
             <LocationSearch place={place} onPick={setPlace} />
           </Panel>
-          {place && <Panel title={`Evacuation zone for ${place.name.split(",")[0]}`} source="Florida Division of Emergency Management (Know Your Zone)" time={evac?.checked ?? null} area="place-evac">
+          {point && <Panel title={`Evacuation zone for ${point.name.split(",")[0]}`} source="Florida Division of Emergency Management (Know Your Zone)" time={evac?.checked ?? null} area="place-evac">
             <EvacZone data={evac} err={evacErr} />
           </Panel>}
-          {place && <Panel title={`Power outages near ${place.name.split(",")[0]}`} source="utility outage feeds (config/outage-sources.json), ORNL ODIN, EIA-861" time={placeOut?.checked ?? null} area="place-outages">
-            <OutageSummary areas={outageAreas} point={place} placeName={place.name.split(",")[0]} fips={placeOut?.county?.fips ?? null} now={now} />
+          {point && <Panel title={`Power outages near ${point.name.split(",")[0]}`} source="utility outage feeds (config/outage-sources.json), ORNL ODIN, EIA-861" time={placeOut?.checked ?? null} area="place-outages">
+            <OutageSummary areas={outageAreas} point={point} placeName={point.name.split(",")[0]} fips={placeOut?.county?.fips ?? null} now={now} />
             <OutagesNearby data={placeOut} err={outageErr} />
           </Panel>}
-          <Panel title={place ? `Threat level for ${place.name.split(",")[0]} and why` : "Your threat level and why"} source="rules in config/thresholds.json over NWS + NHC" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
+          <Panel title={point ? `Threat level for ${point.name.split(",")[0]} and why` : "Your threat level and why"} source="rules in config/thresholds.json over NWS + NHC" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
             <ThreatLadder snap={threatView} variant="full" />
           </Panel>
           <LocalObsPanel snap={snap} area="obs" />
-          <AlertList snap={snap} area="alerts" />
+          <AlertList snap={readSnap} area="alerts" />
           <HazardsPanel snap={snap} time={hazardTime} area="hazards" />
           {more && <VitalsPanel snap={snap} storm={storm} now={now} area="vitals" />}
           {more && snap?.home.configured && <Panel title="Storm position around your home" feed={snap?.feeds.nhc} source="NHC position + forecast points" area="scope">
@@ -153,6 +174,9 @@ export default function App() {
               place={place} placeOutages={placeOut?.outages ?? []} evacZones={evac?.countyZones ?? null} outageAreas={outageAreas}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
               ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, radii: tm.radii, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
+              smoothRadar={prefs.smoothRadar !== false} onSmoothRadar={(v) => setPrefs((p) => ({ ...p, smoothRadar: v }))}
+              homePoint={snap?.home.configured ? { lat: snap.home.lat, lon: snap.home.lon } : null}
+              pickingHome={pickingHome} onMapPick={(p) => { setBrowserHome({ name: `Home (${p.lat.toFixed(3)}, ${p.lon.toFixed(3)})`, lat: p.lat, lon: p.lon, source: "browser" }); setPickingHome(false); }}
               onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }} lowBandwidth={prefs.lowBw} />
           </div>
           {more && <div className="center-bottom">

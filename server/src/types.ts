@@ -111,7 +111,9 @@ export interface Buoy {
 
 /** 0-3 h forecast radar (HRRR model, simulated reflectivity). Not observed. */
 export interface ForecastRadar { source: string; initTime: string; steps: { leadMin: number; fMinute: number; validTime: string; initTime: string }[] }
-export interface RadarFrames { host: string; kind?: "iem" | "rainviewer"; frames: { time: string; path: string }[]; generated: string | null }
+export interface RadarFrames { host: string; kind?: "iem" | "rainviewer"; frames: { time: string; path: string }[]; generated: string | null;
+  /** v0.6.1: newest usable scan, the scan ~10 min before it (for motion), and when the list was last checked. */
+  latestScan?: string | null; prevScan?: string | null; checked?: string }
 
 export interface Outage {
   lat: number; lon: number; customers: number; status: string | null; cause: string | null;
@@ -152,7 +154,7 @@ export interface Snapshot {
   version: string;           // hash of content (not feed timestamps); /ws pushes full snapshot only when it changes
   gisVersion: string;        // changes when /api/gis geometry changes
   generatedAt: string;
-  home: { name: string; lat: number; lon: number; configured: boolean };
+  home: { name: string; lat: number; lon: number; configured: boolean; source?: "env" | "default" };
   storms: Storm[];
   alerts: NwsAlert[];
   forecast: Forecast | null;
