@@ -5,7 +5,6 @@ import AlertList from "./hud/AlertList";
 import VitalsPanel from "./hud/VitalsPanel";
 import FeedTicker from "./hud/FeedTicker";
 import RangeScope from "./hud/RangeScope";
-import GridOverlay from "./hud/GridOverlay";
 import SitrepReadout from "./hud/SitrepReadout";
 import { dtg } from "./hud/sitrep";
 import HourlyStrip from "./hud/HourlyStrip";
@@ -64,13 +63,15 @@ export default function App() {
   const homeSource = browserHome ? "browser" as const : !rawSnap?.home.configured ? "none" as const : rawSnap.home.source === "env" ? "env" as const : "default" as const;
   const gis = useGis(snap?.gisVersion);
   const now = useNow(1000);
-  const [layers, setLayers] = usePref<Record<LayerKey, boolean>>("layers", DEFAULT_LAYERS);
+  const [layers, setLayers] = usePref<Record<LayerKey, boolean>>("layers-v7", DEFAULT_LAYERS);
   const [prefs, setPrefs] = usePref("prefs", { voice: false, notify: false, lowBw: false, mode: "standard" as ViewMode, smoothRadar: true });
   const hazards = useHazards(snap?.hazardsVersion);
   const [stormId, setStormId] = useState<string | null>(null);
   const [tm, setTm] = useState<SliderState | null>(null);
   const [jump, setJump] = useState<{ t: number | null; seq: number }>({ t: null, seq: 0 });
   const [more, setMore] = useState(false);
+  const [ui, setUi] = usePref("ui", { side: true });
+  const [dockEl, setDockEl] = useState<HTMLDivElement | null>(null);
   const timelines = useTimeline(snap?.gisVersion);
   const [advPick, setAdvPick] = useState<string | null>(null);
   useAlerts(snap, prefs.voice, prefs.notify);
@@ -109,42 +110,47 @@ export default function App() {
 
   return (
     <div className={`hud lvl-${level.replace(" ", "-").toLowerCase()}`}>
-      <GridOverlay />
       <div className="banner" role="note">For information only. Follow your local National Weather Service office and emergency management. Evacuation orders override this app.</div>
       {snap && !snap.home.configured && <div className="banner setup" role="alert">
         No location set, so the map shows storms only. To get distance, local alerts, winds and a threat level for your place: copy <code>.env.example</code> to <code>.env</code>, set <code>HOME_LAT</code> and <code>HOME_LON</code> (decimal degrees, e.g. from a map app), then restart with <code>npm start</code>. Your location stays on your computer.
       </div>}
       <HazardBanner snap={snap && browserHome ? { ...snap, alerts: homeAlerts ?? [], homeHazardIds: [] } : snap} now={now} />
       <header className="topbar">
+        <button className="side-toggle" onClick={() => setUi((u) => ({ ...u, side: !u.side }))} aria-expanded={ui.side} aria-label={ui.side ? "Hide side panel" : "Show side panel"} title={ui.side ? "Hide side panel" : "Show side panel"}>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
         <div className="brand">
-          <div className="title">STORMWATCH</div>
-          <div className="subtitle">{!snap ? "—" : snap.home.configured ? `${snap.home.name} · ${Math.abs(snap.home.lat).toFixed(2)}°${snap.home.lat >= 0 ? "N" : "S"} ${Math.abs(snap.home.lon).toFixed(2)}°${snap.home.lon >= 0 ? "E" : "W"}` : "No location set"}</div>
+          <div className="logo" aria-hidden="true"><svg viewBox="-20 -20 40 40" width="30" height="30"><path d="M6 0C6-10-2-16-12-16" /><path d="M-6 0C-6 10 2 16 12 16" /><circle r="6.5" /></svg></div>
+          <div>
+            <div className="title">Stormwatch</div>
+            <div className="subtitle">{!snap ? "Connecting…" : snap.home.configured ? `Home: ${snap.home.name}` : "No location set"}</div>
+          </div>
         </div>
         {(snap?.storms.length ?? 0) > 1 && (
-          <div className="storm-tabs">
-            {snap!.storms.slice(0, 4).map((s) => <button key={s.id} className={`btn ${s.id === storm?.id ? "on" : ""}`} onClick={() => setStormId(s.id)}>{s.name}{snap!.home.configured ? `, ${Math.round(s.distanceMi)} miles away` : ""}</button>)}
+          <div className="storm-tabs" role="group" aria-label="Storms">
+            {snap!.storms.slice(0, 4).map((s) => <button key={s.id} className={`btn ${s.id === storm?.id ? "on" : ""}`} onClick={() => setStormId(s.id)}><b>{s.name}</b>{snap!.home.configured ? <span className="num"> {Math.round(s.distanceMi)} mi</span> : ""}</button>)}
           </div>
         )}
         <ThreatLadder snap={threatView} />
         <div className="top-right">
-          <div className="clock">{new Date(now).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour12: false })}<small> ET</small><span className="zulu">{dtg(new Date(now).toISOString())}</span></div>
           <div className="toggles">
-            <span className={`live ${connected ? "on" : ""}`}>{connected ? "Live" : "Connection lost, retrying"}</span>
-            <button className={`btn ${prefs.voice ? "on" : ""}`} onClick={toggleVoice} title="Speak new warnings (tap to enable)">voice</button>
-            <button className={`btn ${prefs.notify ? "on" : ""}`} onClick={toggleNotify} title="Browser notifications">notify</button>
-            <button className={`btn ${prefs.lowBw ? "on" : ""}`} onClick={() => setPrefs((p) => ({ ...p, lowBw: !p.lowBw }))} title="Stop radar + map tiles">low-bw</button>
+            <span className={`live ${connected ? "on" : ""}`}><i className="live-led" />{connected ? "Live" : "Reconnecting"}</span>
+            <button className={`btn ${prefs.voice ? "on" : ""}`} onClick={toggleVoice} title="Speak new warnings (tap to enable)">Voice</button>
+            <button className={`btn ${prefs.notify ? "on" : ""}`} onClick={toggleNotify} title="Browser notifications">Alerts</button>
+            <button className={`btn ${prefs.lowBw ? "on" : ""}`} onClick={() => setPrefs((p) => ({ ...p, lowBw: !p.lowBw }))} title="Stop radar and map tiles to save data">Low data</button>
+            <button className={`btn ${more ? "on" : ""}`} onClick={() => setMore((v) => !v)} title="Rivers, tides, buoys, power, event log, links">{more ? "Fewer panels" : "More panels"}</button>
           </div>
+          <div className="clock num">{new Date(now).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", second: "2-digit" })}<small> ET</small></div>
         </div>
       </header>
-      <main className={`grid ${more ? "" : "simple"}`}>
+      <main className={`stage ${ui.side ? "side-open" : "side-closed"} ${more ? "more" : ""}`}>
         <aside className="col left">
           <Panel title="Your home" source="saved only in this browser; default Florida State University" time={null} area="home">
             <HomePanel home={snap?.home.configured ? snap.home : null} source={homeSource} browserHome={browserHome} picking={pickingHome} onPicking={setPickingHome}
               onSet={(p) => { setBrowserHome(p); setPickingHome(false); }} />
           </Panel>
-          <Panel title="Where will the storm be? Pick a time" feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine"
-            right={<button className="btn" onClick={() => setMore((v) => !v)}>{more ? "Show less" : "Show more panels"}</button>}>
-            <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} jump={jump} />
+          <Panel title={storm ? `${storm.name} at the selected time` : "Storm at the selected time"} feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine">
+            <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} jump={jump} dock={dockEl} />
           </Panel>
           <Panel title={`Latest for ${feedPoint?.name ?? "your area"}`} source="NWS alerts, statements, observations and storm reports; NHC; utility outage feed" time={null} area="localfeed" className="lf-panel">
             <LocalFeed point={feedPoint} snap={snap} storm={storm} now={now} />
@@ -172,21 +178,21 @@ export default function App() {
         </aside>
         <section className="col center">
           <div className="map-frame" data-area="map">
+            <div className="time-dock" ref={setDockEl} />
             <MapView onJump={(t) => setJump((j) => ({ t, seq: j.seq + 1 }))} snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
               place={place} placeOutages={placeOut?.outages ?? []} evacZones={evac?.countyZones ?? null} outageAreas={outageAreas}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
-              ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, radii: tm.radii, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
+              ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, radii: tm.radii, windMph: tm.windMph, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
               smoothRadar={prefs.smoothRadar !== false} onSmoothRadar={(v) => setPrefs((p) => ({ ...p, smoothRadar: v }))}
               homePoint={snap?.home.configured ? { lat: snap.home.lat, lon: snap.home.lon } : null}
               pickingHome={pickingHome} onMapPick={(p) => { setBrowserHome({ name: `Home (${p.lat.toFixed(3)}, ${p.lon.toFixed(3)})`, lat: p.lat, lon: p.lon, source: "browser" }); setPickingHome(false); }}
-              onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }} lowBandwidth={prefs.lowBw} />
+              onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }}
+              onSetLayers={(keys, on) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => { const n = { ...DEFAULT_LAYERS, ...l }; for (const k of keys) n[k] = on; return n; }); }} lowBandwidth={prefs.lowBw} />
           </div>
-          {more && <div className="center-bottom">
-            <SitrepReadout snap={snap} storm={storm} onSpeak={speak} area="sitrep" />
-            <HourlyStrip snap={snap} area="hourly" />
-          </div>}
         </section>
         {more && <aside className="col right">
+          <SitrepReadout snap={snap} storm={storm} onSpeak={speak} area="sitrep" />
+          <HourlyStrip snap={snap} area="hourly" />
           <PowerPanel snap={snap} area="power" areas={outageAreas} now={now} />
           <RiversPanel snap={snap} area="rivers" />
           <TidesPanel snap={snap} area="tides" />

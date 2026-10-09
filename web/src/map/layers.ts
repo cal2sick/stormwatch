@@ -4,9 +4,24 @@ export const LAYER_LABELS: Record<LayerKey, string> = {
   tornado: "Tornado watches and warnings", flood: "Flash flood warnings", toa: "Tropical-storm wind arrival",
   radar: "Radar", outages: "Power outages", gauges: "Rivers", buoys: "Buoys", nightlights: "Night lights", landmarks: "Places", satellite: "Satellite (GOES-19 infrared)", cameras: "Live cameras",
 };
+/** v0.7: 4 data layers on by default (storm, radar, alerts, outages) plus place names. */
 export const DEFAULT_LAYERS: Record<LayerKey, boolean> = {
-  cone: true, track: true, past: true, warnings: true, tornado: true, flood: true, toa: false, radar: true, outages: true, gauges: true, buoys: true, nightlights: false, landmarks: true, satellite: false, cameras: true,
+  cone: true, track: true, past: true, warnings: true, tornado: true, flood: true, toa: false, radar: true, outages: true, gauges: false, buoys: false, nightlights: false, landmarks: true, satellite: false, cameras: false,
 };
+/** v0.7 layer menu groups (one icon each). */
+export const LAYER_GROUPS: { id: string; label: string; hint: string; keys: LayerKey[] }[] = [
+  { id: "storm", label: "Storm path", hint: "Forecast cone, forecast path and past path (NHC)", keys: ["cone", "track", "past"] },
+  { id: "radar", label: "Radar", hint: "NOAA NEXRAD radar", keys: ["radar"] },
+  { id: "alerts", label: "Alerts", hint: "Hurricane, tornado and flash flood watches and warnings", keys: ["warnings", "tornado", "flood"] },
+  { id: "satellite", label: "Satellite", hint: "GOES-19 infrared satellite", keys: ["satellite"] },
+  { id: "wind", label: "Wind arrival", hint: "When tropical-storm-force winds may arrive (NHC)", keys: ["toa"] },
+  { id: "outages", label: "Outages", hint: "Power outages", keys: ["outages"] },
+  { id: "water", label: "Rivers & buoys", hint: "River gauges, tide gauges and buoys", keys: ["gauges", "buoys"] },
+  { id: "cameras", label: "Cameras", hint: "Live river and coast cameras", keys: ["cameras"] },
+  { id: "places", label: "Places", hint: "Place names", keys: ["landmarks"] },
+  { id: "night", label: "Night lights", hint: "NASA night lights (after the storm)", keys: ["nightlights"] },
+];
+export const groupOn = (l: Record<LayerKey, boolean>, keys: LayerKey[]) => keys.some((k) => l[k]);
 
 /** View modes. "hazards" shows only life-safety layers (watches, warnings, cone, path) over a plain map. */
 export type ViewMode = "standard" | "hazards";

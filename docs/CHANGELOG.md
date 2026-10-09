@@ -5,6 +5,14 @@
 The futuristic revamp, auto-update, and new "when does it hit me" tools. Shipped in small tested commits.
 
 - **Auto-update: `npm run start:auto`.** A small Node supervisor (no extra installs) runs the app and checks the branch's upstream every 2 minutes (`STORMWATCH_UPDATE_SECONDS`). New commit: `git pull --ff-only`, `npm install` only when a `package.json`/`package-lock.json` changed, rebuild, restart. It never resets or overwrites your changes: a dirty tree (other than npm's `package-lock.json` churn, which is discarded) or a diverged branch is logged and skipped. The server restarts itself with backoff if it crashes.
+- **Futuristic revamp (map first).** The map fills the screen; everything else floats over it as glass cards (translucent, blurred, thin lines, soft shadows). Inter for words and JetBrains Mono for numbers (both bundled, no font CDN), deep near-black base with one ice-cyan accent, glow only on live and important things. Retro grid/scanline overlay removed.
+  - Slim top bar: storms as pills, the threat level as one glowing pill ("Threat RED" with the other levels as dots), Live dot, Voice / Alerts / Low data / More panels, clock. A menu button folds the whole side panel away.
+  - Big time dock at the bottom of the map: large time readout, Play, a thick touch-friendly slider (past = blue, now = red tick, forecast = amber stripes) with a glowing thumb, forecast-point jumps and Back to live. The dock border turns red / blue / amber for live / past / forecast.
+  - Live / Past / Next 3 hours as one segmented glass control.
+  - Icon layer menu on the right (Storm path, Radar, Alerts, Satellite, Wind arrival, Outages, Rivers & buoys, Cameras, Places, Night lights; Standard / Hazards view; Center home). Four data layers on by default (storm, radar, alerts, outages). Collapses to icons.
+  - The storm is the familiar hurricane symbol, colored by Saffir-Simpson category and slowly turning (still when "reduce motion" is set). Home is a cyan crosshair.
+  - Every card folds (tap its title; remembered per card). Detail cards (station observations, tornado/flood list, threat details, place lookup) start folded.
+  - The map centers and fits into the area the cards leave free, so the storm is never under the dock or the side panel.
 - **Pages reload themselves.** New `/api/version` (version, git sha, web build time). The page polls it every 20 s and, when it changes, shows "Updated to vX, reloading" for 3 s and reloads.
 
 ## v0.6.1 (2026-10-09, branch `preview`)

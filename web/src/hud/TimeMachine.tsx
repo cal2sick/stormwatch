@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { AdvisoryRecord, Snapshot, Storm, StormGis, StormTimeline } from "../types";
 import { cleanTrack, closestApproach, describe, fmtLat, fmtLon, fmtTime, ktToMph, roundMph5, stateAt, type TrackPoint, type TrackState } from "../track";
 import { CONE_TEXT } from "../hazards";
@@ -41,7 +42,9 @@ export function buildTrack(storm: Storm | undefined, gis: StormGis | undefined):
   return fullTrack(cleanTrack(past), cleanTrack(fc), storm ? { lat: storm.lat, lon: storm.lon, lastUpdate: storm.lastUpdate, intensityKt: storm.intensityKt, advisoryNumber: storm.advisoryNumber } : null);
 }
 
-export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAdv, now, onState, jump }: {
+export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAdv, now, onState, jump, dock }: {
+  /** v0.7: render the big time slider into this element (the dock at the bottom of the map). */
+  dock?: HTMLElement | null;
   jump?: { t: number | null; seq: number };
   snap: Snapshot | null; storm: Storm | undefined; gis: StormGis | undefined; now: number; onState: (s: SliderState | null) => void;
   tl?: StormTimeline; adv?: AdvisoryRecord | null; onAdv?: (advNum: string | null) => void;
@@ -96,15 +99,7 @@ export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAd
   const advList = (tl?.advisories ?? []).filter((a) => a.kind === "full");
   const ticks = track.filter((p) => p.time >= now && p.time <= end && p.tau != null);
 
-  return (
-    <div className="tm">
-      {advList.length > 1 && onAdv && <label className="tm-adv">Forecast to show:{" "}
-        <select value={adv && !isLatest ? adv : ""} onChange={(e) => { setPlaying(false); onAdv(e.target.value || null); }}>
-          <option value="">Latest ({tl?.latest ? advisoryLabel(tl.latest) : "newest"})</option>
-          {advList.filter((a) => a.advNum !== tl?.latest?.advNum).map((a) => <option key={a.advNum} value={a.advNum}>{advisoryLabel(a)}</option>)}
-        </select>
-        {!isLatest && <em className="tm-oldadv"> Showing an older forecast. The storm's real path is the solid past track.</em>}
-      </label>}
+  const sliderUi = <div className={`tm-dockui ${live ? "is-live" : t < now ? "is-past" : "is-fc"}`} data-testid="time-dock">
       <div className="tm-time">{fmtTime(t)} {live ? <span className="tm-live">● Live</span> : t < now ? <span className="tm-now tm-pastb">PAST</span> : <span className="tm-now tm-fcb">FORECAST</span>}</div>
       <div className="tm-slider">
         <button className="btn" onClick={() => setPlaying((p) => !p)}>{playing ? "Pause" : "Play"}</button>
@@ -125,10 +120,22 @@ export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAd
         <datalist id="tm-magnets">{mags.map((m) => <option key={m} value={m} />)}</datalist>
         <button className={`btn ${live ? "on" : ""}`} onClick={() => { setPlaying(false); setPicked(null); }}>Back to live</button>
       </div>
-      <div className="tm-scale"><span className="past">{fmtShort(start)} (past)</span><span className="now">Now</span><span className="fc">{fmtShort(end)} (forecast)</span></div>
+      <div className="tm-scale" style={{ ["--now" as string]: `${Math.max(0, Math.min(100, ((now - start) / Math.max(1, end - start)) * 100)).toFixed(2)}%` }}><span className="past">Past · {fmtShort(start)}</span><span className="now">Now</span><span className="fc">Forecast · {fmtShort(end)}</span></div>
       <div className="tm-ticks">
         {ticks.map((p) => <button key={p.time} className="btn tick" onClick={() => { setPlaying(false); setPicked(p.time); }}>{fmtShort(p.time)}</button>)}
       </div>
+  </div>;
+
+  return (
+    <div className="tm">
+      {advList.length > 1 && onAdv && <label className="tm-adv">Forecast to show:{" "}
+        <select value={adv && !isLatest ? adv : ""} onChange={(e) => { setPlaying(false); onAdv(e.target.value || null); }}>
+          <option value="">Latest ({tl?.latest ? advisoryLabel(tl.latest) : "newest"})</option>
+          {advList.filter((a) => a.advNum !== tl?.latest?.advNum).map((a) => <option key={a.advNum} value={a.advNum}>{advisoryLabel(a)}</option>)}
+        </select>
+        {!isLatest && <em className="tm-oldadv"> Showing an older forecast. The storm's real path is the solid past track.</em>}
+      </label>}
+      {dock ? createPortal(sliderUi, dock) : sliderUi}
       {st && <>
         <div className="tm-grid">
           <div><small>Storm center</small><b>{fmtLat(st.lat)} {fmtLon(st.lon)}</b></div>

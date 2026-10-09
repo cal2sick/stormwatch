@@ -7,7 +7,9 @@ import { RadarPool, type RadarLoadState } from "./RadarLayer";
 import { estimateMinutes, MAX_EXTRAPOLATE_MIN, SmoothRadar } from "./SmoothRadar";
 import type { RadarMotion } from "../types";
 import TapCard, { type TapPoint } from "../hud/TapCard";
-import { LAYER_LABELS, VIEW_LABELS, type LayerKey, type ViewMode } from "./layers";
+import { type LayerKey, type ViewMode } from "./layers";
+import LayerMenu from "./LayerMenu";
+import { catColor } from "../format";
 import { addHazardLayers, HAZARD_LAYER_IDS, updateHazardLayers } from "./HazardLayer";
 import { activeAt, CONE_TEXT, FLOOD_KINDS, HAZARD_HEX, HAZARD_NAME, hazardFeatures, TORNADO_KINDS, untilET } from "../hazards";
 import { circle } from "../timeline";
@@ -38,13 +40,13 @@ function graticule(): GeoJSON.FeatureCollection {
 const GOES_URL = (time: string) => `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/${time}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
 function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); return d.toISOString().slice(0, 10); }
 
-export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean; radii?: RadiiState }
+export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean; radii?: RadiiState; windMph?: number | null }
 export interface Landmark { name: string; lat: number; lon: number; kind: string; source?: string }
 
 const POINT_LAYERS = ["outages", "gauges", "buoys", "tides", "cameras", "fcst-pts", "place-outages", "po-cluster"];
 const compass = (d: number) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((d % 360) + 360) % 360 / 45) % 8];
 
-export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null, outageAreas = null,
+export default function MapView({ onJump, snap, storm, gis, layers, onToggle, onSetLayers, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null, outageAreas = null,
   smoothRadar = true, onSmoothRadar, homePoint = null, pickingHome = false, onMapPick }: {
   outageAreas?: OutageAreas | null;
   smoothRadar?: boolean; onSmoothRadar?: (v: boolean) => void; homePoint?: { lat: number; lon: number } | null;
@@ -53,7 +55,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
   place?: { name: string; lat: number; lon: number } | null; placeOutages?: { lat: number; lon: number; customers: number; cause: string | null; etr: string | null; source: string; distanceMi: number }[];
   ghost?: SliderPos | null; hazards?: Hazard[]; hazardTime: number; mode?: ViewMode; onMode?: (m: ViewMode) => void;
   snap: Snapshot | null; storm: Storm | undefined; gis: StormGis | undefined;
-  layers: Record<LayerKey, boolean>; onToggle: (k: LayerKey) => void; lowBandwidth: boolean;
+  layers: Record<LayerKey, boolean>; onToggle: (k: LayerKey) => void; onSetLayers?: (keys: LayerKey[], on: boolean) => void; lowBandwidth: boolean;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<MlMap | null>(null);
@@ -94,7 +96,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
       const m = new maplibregl.Map({ container: el.current, style, center: [-85.5, 29], zoom: 5, attributionControl: { compact: true } });
       map.current = m;
       (window as any).__map = m; // debug hook for headless checks
-      m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
       m.on("load", () => {
         baseLayers.current = (m.getStyle().layers ?? []).map((l) => l.id);
         m.addSource("nightlights", { type: "raster", tileSize: 256, maxzoom: 8,
@@ -237,6 +239,26 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
       popup: `<b>NDBC ${b.id}</b> ${b.name}<br>Wind ${ktToMph(b.windKt) ?? "—"} mph, gusts ${ktToMph(b.gustKt) ?? "—"} mph · ${b.pressureMb ?? "—"} mb · seas ${b.waveFt ?? "—"} ft<br>${b.distanceToStormMi} mi from storm · ${fmtET(b.time)}` }))));
   }, [ready, snap]);
 
+  // v0.7: the map's free area is what the floating cards leave uncovered; center, fit and fly into that area.
+  useEffect(() => {
+    const m = map.current; if (!ready || !m) return;
+    let last = "", dockFit = false;
+    const upd = () => {
+      const c = m.getContainer().getBoundingClientRect();
+      const side = document.querySelector(".stage.side-open .col.left")?.getBoundingClientRect();
+      const dock = document.querySelector(".time-dock")?.getBoundingClientRect();
+      const rail = document.querySelector(".layer-rail")?.getBoundingClientRect();
+      const pad = { left: side ? Math.max(0, side.right - c.left) : 0, right: rail ? Math.max(0, c.right - rail.left) : 0,
+        top: 100, bottom: dock && dock.height ? Math.max(0, c.bottom - dock.top) : 0 };
+      if (pad.left + pad.right > c.width * 0.7) { pad.left = 0; pad.right = 0; }
+      const k = JSON.stringify(pad); if (k !== last) { last = k; m.setPadding(pad); }
+      // The first time the time dock appears (it needs the storm timeline), re-fit so nothing sits under it.
+      if (!dockFit && pad.bottom > 0 && refit.current) { dockFit = true; refit.current(600); }
+    };
+    upd(); const id = setInterval(upd, 1000); return () => clearInterval(id);
+  }, [ready]);
+
+  const refit = useRef<((d?: number) => void) | null>(null);
   // Markers: home + storms.
   useEffect(() => {
     const m = map.current;
@@ -271,11 +293,13 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
     }
     if (!ghostMk.current) {
       const d = document.createElement("div"); d.className = "pin-slider pin-storm-main"; d.dataset.testid = "storm-marker";
-      d.innerHTML = `<svg viewBox="0 0 34 34" width="34" height="34"><circle cx="17" cy="17" r="11" /><circle cx="17" cy="17" r="3" /><line x1="17" y1="0" x2="17" y2="6" /><line x1="17" y1="28" x2="17" y2="34" /><line x1="0" y1="17" x2="6" y2="17" /><line x1="28" y1="17" x2="34" y2="17" /></svg><span class="pin-label"></span>`;
+      // v0.7: the familiar hurricane symbol, colored by Saffir-Simpson category (slowly turning counterclockwise).
+      d.innerHTML = `<svg viewBox="-20 -20 40 40" width="46" height="46" class="hc-svg"><g class="hc-spin"><path d="M6 0C6-10-2-16-12-16"/><path d="M-6 0C-6 10 2 16 12 16"/><circle r="6.5"/></g><circle r="2.2" class="hc-eye"/></svg><span class="pin-label"></span>`;
       ghostMk.current = new Marker({ element: d }).setLngLat([ghost.lon, ghost.lat]).addTo(m);
     }
     ghostMk.current.setLngLat([ghost.lon, ghost.lat]);
     const lbl = ghostMk.current.getElement().querySelector(".pin-label"); if (lbl) lbl.textContent = ghost.label;
+    ghostMk.current.getElement().style.setProperty("--cat", catColor(ghost.windMph ?? ktToMph(storm?.intensityKt ?? null) ?? null));
     src("tm-trail")?.setData(fc(ghost.trail.length >= 2 ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: ghost.trail } }] : []));
     src("tm-ring")?.setData(fc(ghost.uncertaintyMi > 1 ? [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [circle(ghost.lon, ghost.lat, ghost.uncertaintyMi)] } }] : []));
     const rd = ghost.radii;
@@ -295,7 +319,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
     lastPanT.current = ghost.time;
     const c = m.getContainer(), p = m.project([ghost.lon, ghost.lat]);
     if (moved && needsPan(p.x, p.y, c.clientWidth, c.clientHeight, 0.7)) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 300 });
-  }, [ready, main?.lat, main?.lon, main?.label, main?.uncertaintyMi, main?.live, main?.radii, storm?.lat, storm?.lon, gis]);
+  }, [ready, main?.lat, main?.lon, main?.label, main?.windMph, main?.uncertaintyMi, main?.live, main?.radii, storm?.lat, storm?.lon, gis]);
   useEffect(() => () => { ghostMk.current?.remove(); ghostMk.current = null; }, []);
 
   // v0.6.1 "Change home" → "Click on the map": the next map click sets home (browser-only).
@@ -356,7 +380,8 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
     if (snap.home.configured) b.extend([snap.home.lon, snap.home.lat]);
     const pts = gis?.forecastPoints?.features.slice(0, 3) ?? [];
     pts.forEach((f) => b.extend((f.geometry as GeoJSON.Point).coordinates as [number, number]));
-    m.fitBounds(b, { padding: { top: 70, bottom: 70, left: 60, right: 60 }, maxZoom: 6.5, duration: 0 });
+    refit.current = (d = 0) => m.fitBounds(b, { padding: { top: 70, bottom: 90, left: 60, right: 60 }, maxZoom: 6.5, duration: d });
+    refit.current();
   }, [ready, storm?.id, gis]);
 
   // Layer visibility + low-bandwidth basemap switch.
@@ -478,15 +503,8 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
         {phase === "past" && [-120, -60, -30, -10].map((m) => <button key={m} className="btn tick" onClick={() => onJump(Math.round((tNow + m * 60_000) / 300_000) * 300_000)}>{m} min</button>)}
         {phase === "forecast" && [30, 60, 90, 120, 180].map((m) => <button key={m} className={`btn tick ${Math.abs(sliderT - tNow - m * 60_000) < 8 * 60_000 ? "on" : ""}`} onClick={() => onJump(tNow + m * 60_000)}>+{m} min</button>)}
       </div>}
-      <div className="map-chips">
-        {onMode && (Object.keys(VIEW_LABELS) as ViewMode[]).map((v) => (
-          <button key={v} className={`btn mode ${mode === v ? "on" : ""}`} onClick={() => onMode(v)} aria-pressed={mode === v}>{VIEW_LABELS[v]}</button>
-        ))}
-        {(Object.keys(LAYER_LABELS) as LayerKey[]).map((k) => (
-          <button key={k} className={`btn ${layers[k] ? "on" : ""}`} onClick={() => onToggle(k)}>{LAYER_LABELS[k]}</button>
-        ))}
-        {snap?.home.configured && <button className="btn" onClick={() => { fitted.current = null; map.current?.flyTo({ center: [snap.home.lon, snap.home.lat], zoom: 6 }); }}>center home</button>}
-      </div>
+      <LayerMenu layers={layers} mode={mode} onMode={onMode} onSet={(keys, on) => onSetLayers ? onSetLayers(keys, on) : keys.forEach((k) => { if (layers[k] !== on) onToggle(k); })}
+        onHome={snap?.home.configured ? () => { fitted.current = null; map.current?.flyTo({ center: [snap.home.lon, snap.home.lat], zoom: 6 }); } : undefined} />
       {main && <div className="map-time" data-testid="map-time">Map shows: {new Date(main.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET{main.live ? " (live)" : main.time > Date.now() ? " (forecast)" : " (past)"}</div>}
       </div>
       {phase === "forecast" && <div className="fc-hatch" aria-hidden="true" />}
