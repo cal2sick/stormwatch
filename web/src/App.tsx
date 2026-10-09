@@ -47,6 +47,7 @@ export default function App() {
   const hazards = useHazards(snap?.hazardsVersion);
   const [stormId, setStormId] = useState<string | null>(null);
   const [tm, setTm] = useState<SliderState | null>(null);
+  const [jump, setJump] = useState<{ t: number | null; seq: number }>({ t: null, seq: 0 });
   const [more, setMore] = useState(false);
   const timelines = useTimeline(snap?.gisVersion);
   const [advPick, setAdvPick] = useState<string | null>(null);
@@ -115,7 +116,7 @@ export default function App() {
         <aside className="col left">
           <Panel title="Where will the storm be? Pick a time" feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine"
             right={<button className="btn" onClick={() => setMore((v) => !v)}>{more ? "Show less" : "Show more panels"}</button>}>
-            <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} />
+            <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} jump={jump} />
           </Panel>
           <Panel title="Look up a place" source="US Census Geocoder, OpenStreetMap Nominatim fallback" time={null} area="place">
             <LocationSearch place={place} onPick={setPlace} />
@@ -139,7 +140,7 @@ export default function App() {
         </aside>
         <section className="col center">
           <div className="map-frame" data-area="map">
-            <MapView snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
+            <MapView onJump={(t) => setJump((j) => ({ t, seq: j.seq + 1 }))} snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
               place={place} placeOutages={placeOut?.outages ?? []} evacZones={evac?.countyZones ?? null}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
               ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, radii: tm.radii, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}

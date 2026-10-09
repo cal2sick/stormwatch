@@ -1,10 +1,13 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import "dotenv/config";
+import dotenv from "dotenv";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const ROOT = root;
+// .env lives at the repo root, but `npm start` runs the server from server/. Load the root one first, then any local one.
+dotenv.config({ path: path.join(root, ".env") });
+dotenv.config();
 export const DATA_DIR = path.join(root, "data");
 
 /** `configured` is false when HOME_LAT / HOME_LON are not set; lat/lon are then only a neutral map center. */

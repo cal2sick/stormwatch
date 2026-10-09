@@ -106,7 +106,14 @@ export function magnets(track: TrackPoint[], now: number): number[] {
   return [...new Set([now, ...track.map((p) => p.time)])].sort((a, b) => a - b);
 }
 /** Snap a raw slider time to 15-minute steps, but stick to a nearby magnet (within `pullMs`). */
-export function snapTime(raw: number, mags: number[], stepMs = 15 * 60_000, pullMs = 40 * 60_000): number {
+export function snapTime(raw: number, mags: number[], stepMs = 15 * 60_000, pullMs = 40 * 60_000, now?: number): number {
+  // Within 3 hours of now (radar range) use 5-minute steps and weak magnets, so the slider can actually land
+  // 5, 10, 30 minutes from now. (v0.4 pulled everything within 40 min back to "now", so radar never left live.)
+  if (now != null && Math.abs(raw - now) <= 3 * 3.6e6) {
+    if (Math.abs(raw - now) <= 150_000) return now;
+    for (const m of mags) if (m !== now && Math.abs(m - raw) <= 5 * 60_000) return m;
+    return Math.round(raw / 300_000) * 300_000;
+  }
   let best: number | null = null;
   for (const m of mags) if (Math.abs(m - raw) <= pullMs && (best == null || Math.abs(m - raw) < Math.abs(best - raw))) best = m;
   return best ?? Math.round(raw / stepMs) * stepMs;

@@ -3,13 +3,13 @@ import maplibregl, { Map as MlMap, Marker, type GeoJSONSource, type StyleSpecifi
 import type { Hazard, Snapshot, Storm, StormGis } from "../types";
 import { fmtClockET, fmtET, staleness } from "../time";
 import { addStormLayers, STORM_LAYER_IDS, updateStormLayers, WW_HEX } from "./ConeLayer";
-import { RADAR_MAX_FRAMES, showRadarAt, showRadarFrame, syncRadarFrames } from "./RadarLayer";
+import { RadarPool, type RadarLoadState } from "./RadarLayer";
 import { LAYER_LABELS, VIEW_LABELS, type LayerKey, type ViewMode } from "./layers";
 import { addHazardLayers, HAZARD_LAYER_IDS, updateHazardLayers } from "./HazardLayer";
 import { activeAt, CONE_TEXT, FLOOD_KINDS, HAZARD_HEX, HAZARD_NAME, hazardFeatures, TORNADO_KINDS, untilET } from "../hazards";
 import { circle } from "../timeline";
 import { className, ktToMph } from "../format";
-import { goesTimeAt, needsPan, radarForTime, stormLabel } from "./sliderView";
+import { goesTimeAt, hrrrRadarUrl, iemRadarUrl, needsPan, phaseAt, radarForTime, radarViewAt, stormLabel, type Phase } from "./sliderView";
 import { quadRing, type RadiiState } from "../stormTime";
 
 const OFM_STYLE = "https://tiles.openfreemap.org/styles/dark";
@@ -36,8 +36,8 @@ function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); retur
 export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean; radii?: RadiiState }
 export interface Landmark { name: string; lat: number; lon: number; kind: string; source?: string }
 
-export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null }: {
-  evacZones?: GeoJSON.FeatureCollection | null;
+export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null }: {
+  evacZones?: GeoJSON.FeatureCollection | null; onJump?: (t: number | null) => void;
   place?: { name: string; lat: number; lon: number } | null; placeOutages?: { lat: number; lon: number; customers: number; cause: string | null; etr: string | null; source: string; distanceMi: number }[];
   ghost?: SliderPos | null; hazards?: Hazard[]; hazardTime: number; mode?: ViewMode; onMode?: (m: ViewMode) => void;
   snap: Snapshot | null; storm: Storm | undefined; gis: StormGis | undefined;
@@ -48,9 +48,6 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
   const [ready, setReady] = useState(false);
   const baseLayers = useRef<string[]>([]);
   const markers = useRef<Marker[]>([]);
-  const radarIds = useRef<string[]>([]);
-  const [frame, setFrame] = useState(0);
-  const [playing, setPlaying] = useState(!matchMedia("(prefers-reduced-motion: reduce)").matches);
   const fitted = useRef<string | null>(null);
 
   // Init: fetch the dark style first so an offline start falls back to a bare style instead of a blank map.
@@ -290,34 +287,66 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     baseLayers.current.forEach((id) => { if (id !== "bg" && !/background/.test(id)) vis(id, !lowBandwidth); });
   }, [ready, layers, lowBandwidth]);
 
-  // Radar frames.
-  useEffect(() => {
-    const m = map.current;
-    if (!ready || !m) return;
-    radarIds.current = syncRadarFrames(m, snap?.radar ?? null, layers.radar && !lowBandwidth);
-    setFrame(radarIds.current.length - 1);
-  }, [ready, snap?.radar, layers.radar, lowBandwidth]);
-  // Radar follows the slider: live = animated loop; past = the closest observed frame; future = no radar.
-  const frames = snap?.radar?.frames.slice(-RADAR_MAX_FRAMES) ?? [];
-  const radarPick = radarForTime(frames, main?.time ?? Date.now(), Date.now(), main?.live ?? true, snap?.radar?.kind === "iem");
-  const goes = goesTimeAt(main?.time ?? Date.now(), Date.now());
+  // Radar (v0.5): one view rule for live / past / forecast, shown through a preloading crossfade pool.
+  const radarOn = layers.radar && !lowBandwidth;
+  const tNow = Date.now();
+  const sliderT = main?.time ?? tNow;
+  const isLive = main?.live ?? true;
+  const frames = snap?.radar?.frames ?? [];
+  const rv = snap?.radar?.kind === "rainviewer";
+  const frameUrl = (f: { path: string }) => rv ? `${snap!.radar!.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png` : iemRadarUrl(f.path);
+  const latestScan = frames.at(-1)?.time ?? null;
+  const fcRadar = snap?.forecastRadar ?? null;
+  const phase = phaseAt(sliderT, tNow, isLive);
+  let view = radarViewAt(sliderT, tNow, isLive, latestScan, fcRadar);
+  if (rv && view.kind === "observed") { // RainViewer backup has no archive: nearest loop frame only
+    const p = radarForTime(frames, sliderT, tNow, isLive, false);
+    const fr = p.mode === "live" ? frames.at(-1) : p.index >= 0 ? frames[p.index] : undefined;
+    view = fr ? { ...view, url: frameUrl(fr), frameTime: fr.time } : { kind: "none", reason: "no-radar", label: p.note ?? "No radar for this time." };
+  }
+  // "Radar: last 2 hours" loop (observed), or the forecast steps when the slider is in the forecast.
+  const loopFrames = phase === "forecast"
+    ? (fcRadar?.steps ?? []).map((s) => ({ url: hrrrRadarUrl(s.initTime, s.fMinute), time: s.validTime, forecast: true }))
+    : frames.map((f) => ({ url: frameUrl(f), time: f.time, forecast: false }));
+  const goes = goesTimeAt(sliderT, tNow);
   useEffect(() => {
     const src = map.current?.getSource("goes") as unknown as { setTiles?: (t: string[]) => void } | undefined;
     if (ready && layers.satellite && src?.setTiles) src.setTiles([GOES_URL(goes.time)]);
   }, [ready, goes.time, layers.satellite]);
-  const archStamp = radarPick.mode === "archive" ? radarPick.stamp : null;
-  useEffect(() => { if (map.current && ready) showRadarAt(map.current, archStamp, layers.radar && !lowBandwidth); }, [ready, archStamp, layers.radar, lowBandwidth]);
-  const radarLive = radarPick.mode === "live";
+  const poolRef = useRef<RadarPool | null>(null);
+  const [loopIdx, setLoopIdx] = useState<number | null>(null);
+  const looping = loopIdx != null && loopFrames.length > 1;
+  useEffect(() => { setLoopIdx(null); }, [phase]);
   useEffect(() => {
-    if (!playing || !radarLive || radarIds.current.length < 2) return;
-    const t = setInterval(() => setFrame((f) => (f + 1) % radarIds.current.length), 700);
+    if (loopIdx == null) return;
+    const pool = poolRef.current; if (!pool) return;
+    pool.preload(loopFrames.map((f) => f.url));
+    const t = setInterval(() => setLoopIdx((i) => {
+      if (i == null) return i;
+      for (let k = 1; k <= loopFrames.length; k++) { const j = (i + k) % loopFrames.length; if (pool.loaded(loopFrames[j].url)) return j; }
+      return i;
+    }), 800);
     return () => clearInterval(t);
-  }, [playing, radarLive, ready, snap?.radar]);
-  const shownFrame = radarLive ? frame : radarPick.index;
-  useEffect(() => { if (map.current && ready) showRadarFrame(map.current, radarIds.current, shownFrame); }, [shownFrame, ready, snap?.radar, layers.radar]);
-  (window as any).__radar = { mode: radarPick.mode, index: shownFrame, frameTime: shownFrame >= 0 ? frames[shownFrame]?.time ?? null : null };
-
-  const fTime = shownFrame >= 0 ? frames[shownFrame]?.time ?? null : null;
+  }, [loopIdx != null, loopFrames.length, loopFrames[0]?.url]);
+  const loopFrame = looping ? loopFrames[loopIdx!] : null;
+  const wantUrl = !radarOn ? null : loopFrame ? loopFrame.url : view.kind === "none" ? null : view.url;
+  const [radarState, setRadarState] = useState<{ s: RadarLoadState; url: string | null }>({ s: "idle", url: null });
+  useEffect(() => {
+    const m = map.current; if (!ready || !m) return;
+    if (!poolRef.current) poolRef.current = new RadarPool(m, (s, url) => setRadarState({ s, url }));
+    poolRef.current.show(wantUrl);
+  }, [ready, wantUrl]);
+  // Warm the cache for the 2-hour loop and the forecast steps once the first frame is up, so scrubbing is quick.
+  useEffect(() => {
+    if (!ready || !radarOn || radarState.s !== "ready" || !poolRef.current) return;
+    const t = setTimeout(() => poolRef.current?.preload([...frames.slice(-6).map(frameUrl), ...(fcRadar?.steps ?? []).map((s) => hrrrRadarUrl(s.initTime, s.fMinute))]), 1500);
+    return () => clearTimeout(t);
+  }, [ready, radarOn, radarState.s === "ready", latestScan, fcRadar?.initTime]);
+  const radarLoading = radarOn && wantUrl != null && radarState.url !== wantUrl;
+  const shownLabel = loopFrame
+    ? `${loopFrame.forecast ? "Playing FORECAST radar" : "Replaying the last 2 hours"} · ${loopFrame.forecast ? "for " : "radar at "}${fmtClockET(loopFrame.time)} ET`
+    : view.label;
+  (window as any).__radar = { kind: view.kind, phase, url: wantUrl, shownUrl: radarState.url, state: radarState.s, frameTime: view.kind === "none" ? null : view.frameTime, label: shownLabel };
   const f = snap?.feeds ?? {};
   const st = (k: string) => (f[k] ? staleness(f[k].lastSuccess, f[k].pollSeconds) : "red");
 
@@ -325,6 +354,13 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     <div className="map-wrap">
       <div ref={el} className="map" />
       <div className="map-top">
+      {onJump && <div className="phase-bar" role="group" aria-label="Choose live, past or forecast" data-testid="phase-bar">
+        <button className={`phase live ${phase === "live" ? "on" : ""}`} aria-pressed={phase === "live"} onClick={() => onJump(null)}><i className="dot" />Live now</button>
+        <button className={`phase past ${phase === "past" ? "on" : ""}`} aria-pressed={phase === "past"} onClick={() => onJump(phase === "past" ? sliderT : Math.round((tNow - 3.6e6) / 300_000) * 300_000)}>Past</button>
+        <button className={`phase fc ${phase === "forecast" ? "on" : ""}`} aria-pressed={phase === "forecast"} onClick={() => onJump(phase === "forecast" ? sliderT : tNow + 60 * 60_000)}>Next 3 hours (forecast)</button>
+        {phase === "past" && [-120, -60, -30, -10].map((m) => <button key={m} className="btn tick" onClick={() => onJump(Math.round((tNow + m * 60_000) / 300_000) * 300_000)}>{m} min</button>)}
+        {phase === "forecast" && [30, 60, 90, 120, 180].map((m) => <button key={m} className={`btn tick ${Math.abs(sliderT - tNow - m * 60_000) < 8 * 60_000 ? "on" : ""}`} onClick={() => onJump(tNow + m * 60_000)}>+{m} min</button>)}
+      </div>}
       <div className="map-chips">
         {onMode && (Object.keys(VIEW_LABELS) as ViewMode[]).map((v) => (
           <button key={v} className={`btn mode ${mode === v ? "on" : ""}`} onClick={() => onMode(v)} aria-pressed={mode === v}>{VIEW_LABELS[v]}</button>
@@ -336,11 +372,17 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
       </div>
       {main && <div className="map-time" data-testid="map-time">Map shows: {new Date(main.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET{main.live ? " (live)" : main.time > Date.now() ? " (forecast)" : " (past)"}</div>}
       </div>
-      {layers.radar && !lowBandwidth && frames.length > 0 && (
-        <div className="radar-ctl">
-          {radarLive && <button className="btn" onClick={() => setPlaying((p) => !p)}>{playing ? "pause" : "play"}</button>}
-          <span data-testid="radar-note">{radarLive ? <>Radar image from {fmtClockET(fTime)} ET (latest loop)</> : radarPick.note}</span>
-          {shownFrame >= 0 && <div className="frame-dots">{frames.map((_, i) => <i key={i} className={i === shownFrame ? "on" : ""} />)}</div>}
+      {phase === "forecast" && <div className="fc-hatch" aria-hidden="true" />}
+      {phase === "forecast" && <div className="fc-flag" data-testid="forecast-flag">FORECAST, not observed</div>}
+      {radarOn && (
+        <div className={`radar-ctl ph-${phase}`} data-testid="radar-ctl">
+          {loopFrames.length > 1 && <button className="btn on" data-testid="radar-loop" onClick={() => setLoopIdx((i) => (i == null ? 0 : null))}>
+            {looping ? "❚❚ Pause" : phase === "forecast" ? "▶ Play forecast radar" : "▶ Radar: last 2 hours"}</button>}
+          <span className={`rv-badge ${loopFrame ? (loopFrame.forecast ? "fc" : "past") : view.kind === "forecast" ? "fc" : view.kind === "observed" && view.latest ? "live" : view.kind === "observed" ? "past" : "none"}`}>
+            {loopFrame ? (loopFrame.forecast ? "FORECAST" : "REPLAY") : view.kind === "forecast" ? "FORECAST" : view.kind === "observed" && view.latest ? "LIVE" : view.kind === "observed" ? "PAST" : "NO RADAR"}</span>
+          <span data-testid="radar-note">{shownLabel}</span>
+          {radarLoading && <span className="rv-loading" data-testid="radar-loading">{radarState.s === "slow" ? "slow connection, showing what has loaded" : "loading radar… (previous image kept)"}</span>}
+          {looping && <div className="frame-dots">{loopFrames.map((_, i) => <i key={i} className={i === loopIdx ? "on" : ""} />)}</div>}
         </div>
       )}
       <details className="map-legend" open={!matchMedia("(max-width: 900px)").matches}>

@@ -8,6 +8,7 @@ import { buildStormGis } from "./sources/nhcGis.js";
 import { dropTimelines, updateTimeline } from "./advisories.js";
 import { fetchForecast, fetchNwsAlerts, nwsAlertsUrl, nwsPointsUrl } from "./sources/nws.js";
 import { fetchRadar, RADAR_URL } from "./sources/radar.js";
+import { fetchForecastRadar, HRRR_META_URL } from "./sources/hrrr.js";
 import { fetchUsgs, usgsUrl } from "./sources/usgs.js";
 import { fetchNdbc, NDBC_STATIONS_URL } from "./sources/ndbc.js";
 import { COOPS_URL, fetchCoops } from "./sources/coops.js";
@@ -25,7 +26,7 @@ bus.setMaxListeners(100);
 
 const EMPTY: Omit<Snapshot, "home"> = {
   version: "", gisVersion: "", generatedAt: new Date().toISOString(), storms: [], alerts: [], forecast: null,
-  gauges: [], buoys: [], tides: [], localObs: null, cameras: [], radar: null, power: { local: null, odin: null, links: POWER_LINKS }, events: [],
+  gauges: [], buoys: [], tides: [], localObs: null, cameras: [], radar: null, forecastRadar: null, power: { local: null, odin: null, links: POWER_LINKS }, events: [],
   threat: { level: "DATA STALE", reasons: ["No data yet"] }, feeds: {},
   hazards: [], homeHazardIds: [], hazardsVersion: "", hazardNotes: [],
 };
@@ -222,6 +223,7 @@ const jobs: Job[] = [
     },
   },
   { key: "radar", source: "NEXRAD radar composite (Iowa Environmental Mesonet)", url: () => RADAR_URL, run: async () => { const r = await fetchRadar(); snapshot.radar = r.radar; return r.sourceTime; } },
+  { key: "hrrr", source: "Forecast radar: NOAA HRRR model (Iowa Environmental Mesonet)", url: () => HRRR_META_URL(0), run: async () => { const r = await fetchForecastRadar(); snapshot.forecastRadar = r.data; return r.sourceTime; } },
   { key: "usgs", source: "USGS river gauges near you (NWIS)", url: () => usgsUrl(loadHome()), run: async () => { const r = await fetchUsgs(loadHome()); snapshot.gauges = r.gauges; return r.sourceTime; }, enabled: needsHome },
   {
     key: "ndbc", source: "NDBC buoys near storm", url: () => NDBC_STATIONS_URL,
@@ -282,7 +284,7 @@ export async function runJob(job: Job): Promise<boolean> {
 /** Each job polls on its own interval, with exponential backoff on failure (max 30 min) and Retry-After honored. */
 export function startPolling() {
   // NHC first, then its GIS (needs the raw storm list), then everything else staggered a little.
-  const order = ["nhc", "nhcgis", "timeline", "nws", "hazards", "forecast", "radar", "usgs", "ndbc", "coops", "obs", "cameras", "power", "odin"];
+  const order = ["nhc", "nhcgis", "timeline", "nws", "hazards", "forecast", "radar", "hrrr", "usgs", "ndbc", "coops", "obs", "cameras", "power", "odin"];
   order.forEach((key, i) => {
     const job = jobs.find((j) => j.key === key)!;
     if (job.enabled && !job.enabled()) return; // feature off (no location set, or optional plugin not configured)

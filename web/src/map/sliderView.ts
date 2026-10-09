@@ -59,3 +59,53 @@ export function goesTimeAt(t: number, now: number): { time: string; clamped: boo
   const r = Math.floor(c / 600_000) * 600_000;
   return { time: new Date(r).toISOString().replace(/\.\d{3}Z$/, "Z"), clamped: t > latest };
 }
+
+// ---- v0.5 radar view: one rule for live, past scrub and the 0-3 hour forecast radar ----
+export const IEM_TILES = "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/";
+export interface ForecastRadarStep { leadMin: number; fMinute: number; validTime: string; initTime: string }
+export interface ForecastRadar { source: string; initTime: string; steps: ForecastRadarStep[] }
+export type RadarView =
+  | { kind: "observed"; url: string; frameTime: string; latest: boolean; label: string }
+  | { kind: "forecast"; url: string; frameTime: string; initTime: string; leadMin: number; label: string }
+  | { kind: "none"; reason: "forecast-unavailable" | "beyond-forecast" | "too-old" | "no-radar"; label: string };
+export const FORECAST_RADAR_HOURS = 3;
+const pad4 = (n: number) => String(Math.round(n)).padStart(4, "0");
+const clock = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }) + " ET";
+const day = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }) + " ET";
+
+/** Observed NEXRAD composite tile template (IEM n0q archive, 5-minute scans). `stamp` = YYYYMMDDHHMM UTC. */
+export const iemRadarUrl = (stamp: string) => `${IEM_TILES}ridge::USCOMP-N0Q-${stamp}/{z}/{x}/{y}.png`;
+/** HRRR simulated reflectivity tile template for one model run (IEM), forecast minute `fMinute`. */
+export const hrrrRadarUrl = (initIso: string, fMinute: number) => `${IEM_TILES}hrrr::REFD-F${pad4(fMinute)}-${iemStampAt(Date.parse(initIso)).stamp}/{z}/{x}/{y}.png`;
+
+/**
+ * What radar to show at slider time `t`.
+ * - Live (or within a minute of now): the newest scan the server has seen.
+ * - Past: the 5-minute scan at or before t (never newer than the newest scan), up to 7 days back.
+ * - Future, up to 3 hours: HRRR forecast radar, the model step whose valid time is closest to t. Always labeled forecast.
+ * - Beyond 3 hours, or no model data: nothing, with a clear reason (the caller keeps the map readable).
+ */
+export function radarViewAt(t: number, now: number, live: boolean, latestScan: string | null, fc: ForecastRadar | null): RadarView {
+  const latestT = latestScan ? Date.parse(latestScan) : now - 10 * 60_000;
+  if (live || Math.abs(t - now) <= 60_000 || (t <= now && t >= latestT)) {
+    const s = iemStampAt(Math.min(live ? latestT : t, latestT));
+    const ago = Math.max(0, Math.round((now - Date.parse(s.time)) / 60_000));
+    return { kind: "observed", url: iemRadarUrl(s.stamp), frameTime: s.time, latest: true, label: `Radar at ${clock(s.time)} (latest scan, ${ago} min ago)` };
+  }
+  if (t < now) {
+    if (t < now - ARCHIVE_DAYS * 86_400_000) return { kind: "none", reason: "too-old", label: `No radar: the archive used here only goes back ${ARCHIVE_DAYS} days.` };
+    const s = iemStampAt(t);
+    return { kind: "observed", url: iemRadarUrl(s.stamp), frameTime: s.time, latest: false, label: `Radar at ${day(s.time)} (observed)` };
+  }
+  if (t > now + FORECAST_RADAR_HOURS * 3.6e6 + 10 * 60_000) return { kind: "none", reason: "beyond-forecast", label: "Forecast radar only covers the next 3 hours. Radar is hidden for this time." };
+  if (!fc || !fc.steps.length) return { kind: "none", reason: "forecast-unavailable", label: "Forecast radar is unavailable right now (model data not loaded). Radar is hidden for future times; it never shows old radar as if it were the future." };
+  let best = fc.steps[0];
+  for (const s of fc.steps) if (Math.abs(Date.parse(s.validTime) - t) < Math.abs(Date.parse(best.validTime) - t)) best = s;
+  const lead = Math.round((Date.parse(best.validTime) - now) / 60_000);
+  return { kind: "forecast", url: hrrrRadarUrl(best.initTime, best.fMinute), frameTime: best.validTime, initTime: best.initTime, leadMin: lead,
+    label: `FORECAST radar for ${clock(best.validTime)} (about ${lead > 0 ? "+" : ""}${lead} min) · HRRR model run ${clock(best.initTime)} · may be wrong` };
+}
+
+/** Which of the three big view buttons is active for slider time t. */
+export type Phase = "live" | "past" | "forecast";
+export const phaseAt = (t: number, now: number, live: boolean): Phase => (live || Math.abs(t - now) <= 60_000 ? "live" : t < now ? "past" : "forecast");

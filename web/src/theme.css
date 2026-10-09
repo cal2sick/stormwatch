@@ -265,3 +265,30 @@ body { font-size: 14px; }
 .tm-adv { display: block; margin: 4px 0 8px; font-size: 13px; }
 .tm-adv select { background: #070909; color: var(--text); border: 1px solid var(--line2); font: inherit; max-width: 100%; }
 .tm-oldadv { display: block; color: #e3a64a; font-style: normal; }
+
+/* v0.5: Live now / Past / Forecast */
+.phase-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.phase { font: inherit; font-size: 15px; font-weight: 700; letter-spacing: 1px; padding: 6px 14px; cursor: pointer; background: #070909ee; color: #cfd8d2; border: 2px solid var(--line2); }
+.phase.live.on { background: #e03131; border-color: #e03131; color: #fff; }
+.phase.live .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff8787; margin-right: 7px; vertical-align: 1px; }
+.phase.live.on .dot { background: #fff; animation: livepulse 1.4s infinite; }
+@keyframes livepulse { 50% { opacity: .25; } }
+.phase.past.on { background: #364fc7; border-color: #5c7cfa; color: #fff; }
+.phase.fc.on { color: #1a1300; border-color: #fab005; background: repeating-linear-gradient(135deg, #fab005 0 10px, #ffd43b 10px 20px); }
+@media (prefers-reduced-motion: reduce) { .phase.live.on .dot { animation: none; } }
+.fc-hatch { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: repeating-linear-gradient(135deg, rgba(250,176,5,.10) 0 14px, transparent 14px 28px); box-shadow: inset 0 0 0 4px rgba(250,176,5,.6); }
+.fc-flag { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 3; pointer-events: none; font-size: 20px; font-weight: 800; letter-spacing: 2px; color: #1a1300; background: #fab005; padding: 4px 14px; border: 2px solid #1a1300; }
+.radar-ctl { font-size: 12px; letter-spacing: .5px; }
+.rv-badge { font-weight: 800; padding: 1px 6px; letter-spacing: 1px; }
+.rv-badge.live { background: #e03131; color: #fff; } .rv-badge.past, .rv-badge.replay { background: #364fc7; color: #fff; }
+.rv-badge.fc { color: #1a1300; background: repeating-linear-gradient(135deg, #fab005 0 6px, #ffd43b 6px 12px); } .rv-badge.none { background: #495057; color: #fff; }
+.rv-loading { color: #ffd43b; animation: livepulse 1.2s infinite; }
+.radar-ctl.ph-forecast { border-color: #fab005; }
+/* Slider track colored past (blue) / now (red tick) / forecast (amber stripes) */
+.tm-range { -webkit-appearance: none; appearance: none; height: 10px; border: 1px solid var(--line2);
+  background: linear-gradient(90deg, #364fc7 0 calc(var(--now) - 1px), #ff5a4f calc(var(--now) - 1px) calc(var(--now) + 2px), transparent calc(var(--now) + 2px)),
+    repeating-linear-gradient(135deg, #8a6d00 0 6px, #fab005 6px 12px); }
+.tm-range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 22px; background: #fff; border: 2px solid #070909; cursor: pointer; }
+.tm-range::-moz-range-thumb { width: 16px; height: 22px; background: #fff; border: 2px solid #070909; cursor: pointer; }
+.tm-scale .past { color: #91a7ff; } .tm-scale .now { color: #ff8a80; font-weight: 700; } .tm-scale .fc { color: #fab005; }
+.tm-pastb { background: #364fc7; color: #fff; padding: 0 6px; font-weight: 700; } .tm-fcb { color: #1a1300; background: #fab005; padding: 0 6px; font-weight: 700; }

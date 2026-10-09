@@ -1,45 +1,75 @@
-// Radar loop: one raster source per frame, cycled by opacity. Default IEM NEXRAD n0q (5-min, archived); RainViewer fallback.
-// Plus one "radar-at" source for any past slider time beyond the loop (IEM archive, time-matched).
+// Radar on the map (v0.5): a small pool of raster sources, one per frame URL.
+// Fixes the v0.4 blank-radar bug: a new frame is added hidden, its tiles load, and only then does it crossfade in.
+// The previous frame stays on screen until then, so scrubbing never shows an empty map.
 import type { Map as MlMap } from "maplibre-gl";
-import type { RadarFrames } from "../types";
 
-const PREFIX = "radar-";
-export const RADAR_MAX_FRAMES = 13; // ~2 h at 10-min spacing (all RainViewer past frames), so the slider can go back
+export const IEM_ATTR = 'Radar: NOAA NEXRAD and NOAA HRRR model via <a href="https://mesonet.agron.iastate.edu/" target="_blank">Iowa Environmental Mesonet</a>';
+const RV_ATTR = '<a href="https://www.rainviewer.com/" target="_blank">RainViewer</a>';
+const OPACITY = 0.62;
+const FADE_MS = 250;
+const MAX_SOURCES = 24;
+const LOAD_TIMEOUT_MS = 8000;
 
-export function syncRadarFrames(m: MlMap, radar: RadarFrames | null, enabled: boolean): string[] {
-  const frames = enabled && radar ? radar.frames.slice(-RADAR_MAX_FRAMES) : [];
-  const want = new Set(frames.map((f) => PREFIX + f.path.replace(/\W/g, "")));
-  for (const l of m.getStyle().layers ?? []) {
-    if (l.id.startsWith(PREFIX) && !want.has(l.id)) { m.removeLayer(l.id); if (m.getSource(l.id)) m.removeSource(l.id); }
+export type RadarLoadState = "idle" | "loading" | "ready" | "slow";
+
+export class RadarPool {
+  private ids = new Map<string, string>(); // url -> layer/source id
+  private used = new Map<string, number>(); // url -> last use
+  private n = 0;
+  private want: string | null = null;
+  private shown: string | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  constructor(private m: MlMap, private onState: (s: RadarLoadState, shownUrl: string | null) => void) {
+    m.on("sourcedata", (e: any) => {
+      if (!e.sourceId) return;
+      if (e.tile) this.tiled.add(e.sourceId);
+      if (!this.want) return;
+      if (this.ids.get(this.want) === e.sourceId && this.loaded(this.want)) this.activate(this.want);
+    });
   }
-  const before = m.getLayer("cone-fill") ? "cone-fill" : undefined;
-  for (const f of frames) {
-    const id = PREFIX + f.path.replace(/\W/g, "");
-    if (m.getLayer(id)) continue;
-    const iem = radar!.kind === "iem";
-    m.addSource(id, iem
-      ? { type: "raster", tiles: [`${radar!.host}${f.path}/{z}/{x}/{y}.png`], tileSize: 256, maxzoom: 8, attribution: IEM_ATTR }
-      : { type: "raster", tiles: [`${radar!.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`], tileSize: 256, maxzoom: 7, attribution: '<a href="https://www.rainviewer.com/" target="_blank">RainViewer</a>' });
-    m.addLayer({ id, type: "raster", source: id, paint: iem ? { "raster-opacity": 0, "raster-fade-duration": 0 } : { "raster-opacity": 0, "raster-fade-duration": 0, "raster-saturation": -0.85, "raster-contrast": 0.15 } }, before);
+  private before() { return this.m.getLayer("cone-fill") ? "cone-fill" : undefined; }
+  private ensure(url: string): string {
+    let id = this.ids.get(url);
+    if (id && this.m.getSource(id)) { this.used.set(url, Date.now()); return id; }
+    id = `radar-p${this.n++}`;
+    const rv = url.includes("rainviewer");
+    this.m.addSource(id, { type: "raster", tiles: [url], tileSize: 256, maxzoom: rv ? 7 : 8, attribution: rv ? RV_ATTR : IEM_ATTR });
+    this.m.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: FADE_MS, delay: 0 }, "raster-fade-duration": 0 } as any }, this.before());
+    this.ids.set(url, id); this.used.set(url, Date.now());
+    this.evict();
+    return id;
   }
-  return frames.map((f) => PREFIX + f.path.replace(/\W/g, ""));
-}
-
-const IEM_ATTR = 'Radar: NOAA NEXRAD via <a href="https://mesonet.agron.iastate.edu/" target="_blank">Iowa Environmental Mesonet</a>';
-export const IEM_HOST = "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-";
-
-/** Show the archived IEM radar frame for `stamp` (YYYYMMDDHHMM), or hide it when null. */
-export function showRadarAt(m: MlMap, stamp: string | null, enabled: boolean) {
-  const id = "radar-at";
-  if (!m.getSource(id)) {
-    m.addSource(id, { type: "raster", tiles: [`${IEM_HOST}000000000000/{z}/{x}/{y}.png`], tileSize: 256, maxzoom: 8, attribution: IEM_ATTR });
-    m.addLayer({ id, type: "raster", source: id, layout: { visibility: "none" }, paint: { "raster-opacity": 0.6, "raster-fade-duration": 0 } }, m.getLayer("cone-fill") ? "cone-fill" : undefined);
+  private evict() {
+    if (this.ids.size <= MAX_SOURCES) return;
+    const old = [...this.used.entries()].filter(([u]) => u !== this.want && u !== this.shown && !this.keep.has(u)).sort((a, b) => a[1] - b[1]);
+    for (const [u] of old.slice(0, this.ids.size - MAX_SOURCES)) {
+      const id = this.ids.get(u)!; if (this.m.getLayer(id)) this.m.removeLayer(id); if (this.m.getSource(id)) this.m.removeSource(id);
+      this.ids.delete(u); this.used.delete(u); this.tiled.delete(id);
+    }
   }
-  if (!stamp || !enabled) { m.setLayoutProperty(id, "visibility", "none"); return; }
-  (m.getSource(id) as unknown as { setTiles: (t: string[]) => void }).setTiles([`${IEM_HOST}${stamp}/{z}/{x}/{y}.png`]);
-  m.setLayoutProperty(id, "visibility", "visible");
-}
-
-export function showRadarFrame(m: MlMap, ids: string[], idx: number) {
-  ids.forEach((id, i) => { if (m.getLayer(id)) m.setPaintProperty(id, "raster-opacity", i === idx ? 0.6 : 0); });
+  private keep = new Set<string>();
+  private tiled = new Set<string>(); // sources that have received at least one tile (isSourceLoaded is true before any tile is requested)
+  loaded(url: string): boolean { const id = this.ids.get(url); try { return !!id && this.tiled.has(id) && this.m.isSourceLoaded(id); } catch { return false; } }
+  /** Start loading frames in the background (hidden), e.g. the 2-hour loop, so playback is smooth. */
+  preload(urls: string[]) { this.keep = new Set(urls); for (const u of urls) this.ensure(u); }
+  /** Show `url`; keeps the current frame until the new one has loaded. null hides radar. */
+  show(url: string | null) {
+    this.want = url;
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    if (!url) { this.fadeTo(null); this.onState("idle", null); return; }
+    this.ensure(url);
+    if (this.loaded(url)) { this.activate(url); return; }
+    this.onState("loading", this.shown);
+    this.timer = setTimeout(() => { if (this.want === url) { this.activate(url); this.onState("slow", url); } }, LOAD_TIMEOUT_MS);
+  }
+  private activate(url: string) {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    this.fadeTo(url);
+    this.onState("ready", url);
+  }
+  private fadeTo(url: string | null) {
+    this.shown = url;
+    for (const [u, id] of this.ids) if (this.m.getLayer(id)) this.m.setPaintProperty(id, "raster-opacity", u === url ? OPACITY : 0);
+  }
+  clear() { this.keep.clear(); this.show(null); }
 }

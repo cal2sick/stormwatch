@@ -109,6 +109,8 @@ export interface Buoy {
   pressureTendencyMb: number | null;
 }
 
+/** 0-3 h forecast radar (HRRR model, simulated reflectivity). Not observed. */
+export interface ForecastRadar { source: string; initTime: string; steps: { leadMin: number; fMinute: number; validTime: string; initTime: string }[] }
 export interface RadarFrames { host: string; kind?: "iem" | "rainviewer"; frames: { time: string; path: string }[]; generated: string | null }
 
 export interface Outage {
@@ -160,6 +162,7 @@ export interface Snapshot {
   localObs: LocalObs | null;  // nearest NWS station to home
   cameras: Camera[];          // USGS HIVIS (+ optional Windy with your own key) near the storm / home
   radar: RadarFrames | null;
+  forecastRadar?: ForecastRadar | null;
   power: Power;
   threat: { level: ThreatLevel; reasons: string[]; computedLevel?: ThreatLevel; holdUntil?: string | null };
   events: HudEvent[];

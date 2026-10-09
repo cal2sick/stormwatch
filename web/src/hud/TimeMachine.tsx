@@ -41,7 +41,8 @@ export function buildTrack(storm: Storm | undefined, gis: StormGis | undefined):
   return fullTrack(cleanTrack(past), cleanTrack(fc), storm ? { lat: storm.lat, lon: storm.lon, lastUpdate: storm.lastUpdate, intensityKt: storm.intensityKt, advisoryNumber: storm.advisoryNumber } : null);
 }
 
-export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAdv, now, onState }: {
+export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAdv, now, onState, jump }: {
+  jump?: { t: number | null; seq: number };
   snap: Snapshot | null; storm: Storm | undefined; gis: StormGis | undefined; now: number; onState: (s: SliderState | null) => void;
   tl?: StormTimeline; adv?: AdvisoryRecord | null; onAdv?: (advNum: string | null) => void;
 }) {
@@ -54,13 +55,15 @@ export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAd
   // Live = slider parked on "now" and following the clock; otherwise the user picked a fixed time.
   const [picked, setPicked] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
+  // The big Live now / Past / Next 3 hours buttons on the map move this slider.
+  useEffect(() => { if (jump && jump.seq > 0) { setPlaying(false); setPicked(jump.t); } }, [jump?.seq]);
   const liveObs = storm?.lastUpdate ? Date.parse(storm.lastUpdate) : null;
   // Slider value = a UTC timestamp over [first, last] valid time of the track (past capped at 72 h).
   const [start, end] = sliderRange(track, now);
   const live = picked == null;
   const t = live ? now : Math.min(Math.max(picked, start), end);
   const mags = useMemo(() => magnets(track.filter((p) => p.time >= start && p.time <= end), now), [track, start, end, Math.floor(now / 60_000)]);
-  const choose = (raw: number) => { const v = snapTime(raw, mags); setPicked(Math.abs(v - now) < 60_000 ? null : v); };
+  const choose = (raw: number) => { const v = snapTime(raw, mags, 15 * 60_000, 40 * 60_000, now); setPicked(Math.abs(v - now) < 60_000 ? null : v); };
   const st = stateAt(track, live && liveObs != null ? Math.min(liveObs, track[track.length - 1]?.time ?? liveObs) : t, home);
   if (st && live) st.time = now;
   const cpa = useMemo(() => closestApproach(track, home, now), [track, home.lat, home.lon, Math.floor(now / 60_000)]);
@@ -102,10 +105,11 @@ export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAd
         </select>
         {!isLatest && <em className="tm-oldadv"> Showing an older forecast. The storm's real path is the solid past track.</em>}
       </label>}
-      <div className="tm-time">{fmtTime(t)} {live ? <span className="tm-live">● Live</span> : <span className="tm-now">{t < now ? "(past position)" : "(forecast)"}</span>}</div>
+      <div className="tm-time">{fmtTime(t)} {live ? <span className="tm-live">● Live</span> : t < now ? <span className="tm-now tm-pastb">PAST</span> : <span className="tm-now tm-fcb">FORECAST</span>}</div>
       <div className="tm-slider">
         <button className="btn" onClick={() => setPlaying((p) => !p)}>{playing ? "Pause" : "Play"}</button>
-        <input type="range" min={start} max={end} step={60_000} value={t} list="tm-magnets"
+        <input type="range" min={start} max={end} step={60_000} value={t} list="tm-magnets" className="tm-range"
+          style={{ ["--now" as string]: `${Math.max(0, Math.min(100, ((now - start) / Math.max(1, end - start)) * 100)).toFixed(2)}%` }}
           onInput={(e) => { setPlaying(false); choose(Number((e.target as HTMLInputElement).value)); }}
           onChange={(e) => { setPlaying(false); choose(Number(e.target.value)); }}
           onKeyDown={(e) => {
@@ -121,7 +125,7 @@ export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAd
         <datalist id="tm-magnets">{mags.map((m) => <option key={m} value={m} />)}</datalist>
         <button className={`btn ${live ? "on" : ""}`} onClick={() => { setPlaying(false); setPicked(null); }}>Back to live</button>
       </div>
-      <div className="tm-scale"><span>{fmtShort(start)} (past)</span><span>Now</span><span>{fmtShort(end)} (forecast)</span></div>
+      <div className="tm-scale"><span className="past">{fmtShort(start)} (past)</span><span className="now">Now</span><span className="fc">{fmtShort(end)} (forecast)</span></div>
       <div className="tm-ticks">
         {ticks.map((p) => <button key={p.time} className="btn tick" onClick={() => { setPlaying(false); setPicked(p.time); }}>{fmtShort(p.time)}</button>)}
       </div>
