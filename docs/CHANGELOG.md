@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.0 (2026-10-09, branch `preview`)
+
+The futuristic revamp, auto-update, and new "when does it hit me" tools. Shipped in small tested commits.
+
+- **Auto-update: `npm run start:auto`.** A small Node supervisor (no extra installs) runs the app and checks the branch's upstream every 2 minutes (`STORMWATCH_UPDATE_SECONDS`). New commit: `git pull --ff-only`, `npm install` only when a `package.json`/`package-lock.json` changed, rebuild, restart. It never resets or overwrites your changes: a dirty tree (other than npm's `package-lock.json` churn, which is discarded) or a diverged branch is logged and skipped. The server restarts itself with backoff if it crashes.
+- **Pages reload themselves.** New `/api/version` (version, git sha, web build time). The page polls it every 20 s and, when it changes, shows "Updated to vX, reloading" for 3 s and reloads.
+
 ## v0.6.1 (2026-10-09, branch `preview`)
 
 Live radar that feels live, Change home, FSU default, and a real tap-on-map card.

@@ -15,13 +15,14 @@ A self-hosted, localhost-only live hurricane tracker. A Node server polls free p
 ```bash
 npm install          # root; installs both workspaces
 npm start            # build web + serve web and API on http://localhost:8787
+npm run start:auto   # same + auto-update supervisor (scripts/autoupdate.mjs)
 npm run dev          # hot reload (API :8787 + Vite :5173)
 npm test             # unit tests, offline, must pass
 npm run typecheck    # must pass before every commit
 npm run build        # must pass before every PR
 npm run smoke        # live fetch of every enabled feed (needs internet; not run in CI)
 ```
-Health check: `curl http://localhost:8787/api/health` -> `{"ok":true,...}`. Full state: `/api/snapshot`, geometry: `/api/gis`, storm timeline: `/api/timeline`, watch/warning shapes: `/api/hazards`, live push: `/ws`.
+Health check: `curl http://localhost:8787/api/health` (code version: `/api/version`) -> `{"ok":true,...}`. Full state: `/api/snapshot`, geometry: `/api/gis`, storm timeline: `/api/timeline`, watch/warning shapes: `/api/hazards`, live push: `/ws`.
 
 ## Layout
 - `server/src/advisories.ts` + `sources/atcf.ts` + `sources/tcm.ts`: the unified UTC storm timeline (best track, official forecast, wind radii) and the write-once advisory store in `data/advisories/`. `web/src/stormTime.ts`: pure slider rules on that timeline (track by valid time, radii, cone circle, slider range). Never index the track by array position or use issue time as valid time.

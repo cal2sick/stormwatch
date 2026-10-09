@@ -37,6 +37,7 @@ import LocalFeed, { useFeedPoint } from "./hud/LocalFeed";
 import HomePanel from "./hud/HomePanel";
 import { useBrowserHome } from "./useHome";
 import { distanceMi } from "./geo";
+import { useAutoReload } from "./useAutoReload";
 
 function usePref<T>(key: string, init: T) {
   const [v, setV] = useState<T>(() => { try { const s = localStorage.getItem("stormwatch:" + key); return s ? { ...init, ...JSON.parse(s) } : init; } catch { return init; } });
@@ -46,6 +47,7 @@ function usePref<T>(key: string, init: T) {
 
 export default function App() {
   const { snap: rawSnap, connected } = useSnapshot();
+  const { updatingTo } = useAutoReload();
   // v0.6.1: a home chosen in this browser ("Change home") overrides .env and the FSU default everywhere in the UI.
   const [browserHome, setBrowserHome] = useBrowserHome();
   const [pickingHome, setPickingHome] = useState(false);
@@ -194,6 +196,7 @@ export default function App() {
         </aside>}
       </main>
       <FeedTicker snap={snap} now={now} />
+      {updatingTo && <div className="update-toast" role="status">Updated to {updatingTo}, reloading…</div>}
     </div>
   );
 }

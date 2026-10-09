@@ -2,7 +2,8 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import fastifyStatic from "@fastify/static";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { HOST, loadLandmarks, PORT, ROOT } from "./config.js";
 import { evacZone } from "./sources/evac.js";
@@ -19,6 +20,16 @@ await app.register(cors, { origin: true });
 await app.register(websocket);
 
 app.get("/api/health", async () => ({ ok: true, version: getSnapshot().version, generatedAt: getSnapshot().generatedAt }));
+/** v0.7 auto-reload: the open page polls this and reloads when the code (git sha) or the web build changes. */
+const APP_VERSION = (() => { try { return JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")).version as string; } catch { return "unknown"; } })();
+const GIT_SHA = (() => { try { return execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return "unknown"; } })();
+const STARTED_AT = new Date().toISOString();
+app.get("/api/version", async (_req, reply) => {
+  let builtAt: string | null = null;
+  try { builtAt = statSync(path.join(ROOT, "web", "dist", "index.html")).mtime.toISOString(); } catch { builtAt = null; }
+  reply.header("Cache-Control", "no-store");
+  return { version: APP_VERSION, sha: GIT_SHA, builtAt, startedAt: STARTED_AT };
+});
 app.get("/api/snapshot", async () => getSnapshot());
 app.get("/api/gis", async () => getGis());
 /** Active watch / warning shapes (GeoJSON geometry + verbatim NWS text). Re-fetch when snapshot.hazardsVersion changes. */

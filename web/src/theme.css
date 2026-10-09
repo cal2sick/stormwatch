@@ -355,3 +355,9 @@ body { font-size: 14px; }
 .hud-popup .maplibregl-popup-close-button { width: 32px; height: 32px; font-size: 20px; color: var(--text); right: 0; top: 0; }
 .hud-popup .maplibregl-popup-content { padding-right: 36px; }
 .tap-pin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; background: #ffffff33; box-shadow: 0 0 0 4px #ffffff22; }
+
+/* v0.7 auto-update toast */
+.update-toast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 100; padding: 12px 20px; border-radius: 12px;
+  background: rgba(14, 22, 30, .85); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); color: #e8f4ff; font-size: 15px;
+  border: 1px solid rgba(94, 234, 212, .45); box-shadow: 0 0 24px rgba(94, 234, 212, .25), 0 10px 30px rgba(0,0,0,.5); animation: toastin .3s ease-out; }
+@keyframes toastin { from { opacity: 0; transform: translate(-50%, 10px); } }

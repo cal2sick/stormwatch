@@ -14,7 +14,15 @@ git clone https://github.com/cal2sick/stormwatch.git stormwatch && cd stormwatch
 
 Open **http://localhost:8787** once it says `Server listening`. Stop it with `Ctrl+C`.
 
-Update later:
+**Keep it up to date automatically (recommended):** start it with `npm run start:auto` instead of `npm start`.
+
+```bash
+cd stormwatch && npm run start:auto
+```
+
+Every 2 minutes it checks GitHub for a new version of your branch. When there is one, it pulls it (`git pull --ff-only`), runs `npm install` only if dependencies changed, rebuilds, and restarts the server. Any open Stormwatch tab shows "Updated to vX, reloading" and reloads itself 3 seconds later. It never overwrites your own edits: if you changed a tracked file (other than npm's `package-lock.json` churn, which it discards) or your branch has its own commits, it logs why and skips the update. Change the interval with `STORMWATCH_UPDATE_SECONDS=300 npm run start:auto`. Stop it with `Ctrl+C`.
+
+Update by hand instead:
 
 ```bash
 cd stormwatch && git pull && npm install && npm start
@@ -63,6 +71,7 @@ Restart with `npm start`. `.env` is git-ignored, so your location and contact ne
 | Command | What it does |
 |---|---|
 | `npm start` | Build the web app and serve it plus the API on http://localhost:8787 |
+| `npm run start:auto` | Same, plus auto-update: pulls new commits on your branch every 2 min, rebuilds, restarts, and open tabs reload |
 | `npm run dev` | Hot reload for development (Vite dev server on :5173 proxies to :8787) |
 | `npm test` | Unit tests (geo math, threat rules, parsers, track interpolation, config) |
 | `npm run typecheck` | TypeScript checks for server and web |
