@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Snapshot, Storm, StormGis } from "../types";
+import type { AdvisoryRecord, Snapshot, Storm, StormGis, StormTimeline } from "../types";
 import { cleanTrack, closestApproach, describe, fmtLat, fmtLon, fmtTime, ktToMph, roundMph5, stateAt, type TrackPoint, type TrackState } from "../track";
 import { CONE_TEXT } from "../hazards";
-import { adviceWindows, alertsActiveAt, coneRadiusMi, fullTrack, hourAt, magnets, pathBetween, snapTime } from "../timeline";
+import { adviceWindows, alertsActiveAt, fullTrack, hourAt, magnets, pathBetween, snapTime } from "../timeline";
+import { advisoryLabel, coneCircleAt, radiiAt, sliderRange, timelineTrack, type RadiiState } from "../stormTime";
 
-export type SliderState = TrackState & { trail: [number, number][]; uncertaintyMi: number; live: boolean };
+export type SliderState = TrackState & { trail: [number, number][]; uncertaintyMi: number; live: boolean; radii: RadiiState; coneTau: number | null };
 const fmtShort = (t: number) => new Date(t).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric" });
 
 const STEP = 15 * 60_000;
@@ -40,18 +41,22 @@ export function buildTrack(storm: Storm | undefined, gis: StormGis | undefined):
   return fullTrack(cleanTrack(past), cleanTrack(fc), storm ? { lat: storm.lat, lon: storm.lon, lastUpdate: storm.lastUpdate, intensityKt: storm.intensityKt, advisoryNumber: storm.advisoryNumber } : null);
 }
 
-export default function TimeMachine({ snap, storm, gis, now, onState }: {
+export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAdv, now, onState }: {
   snap: Snapshot | null; storm: Storm | undefined; gis: StormGis | undefined; now: number; onState: (s: SliderState | null) => void;
+  tl?: StormTimeline; adv?: AdvisoryRecord | null; onAdv?: (advNum: string | null) => void;
 }) {
-  const track = useMemo(() => buildTrack(storm, gis), [storm, gis]);
+  // Preferred: the server's unified UTC timeline (ATCF best track + official forecast). Fallback: NHC GIS shapefile points.
+  const isLatest = !pickedAdv;
+  const advRec = pickedAdv ?? tl?.latest ?? null;
+  const track = useMemo(() => (tl && (tl.best.length || tl.latest) ? timelineTrack(tl, advRec, isLatest) : buildTrack(storm, gis)), [tl, advRec, isLatest, storm, gis]);
   const home = snap?.home ?? { lat: 25, lon: -70, name: "No location set", configured: false };
   const hasHome = !!home.configured;
   // Live = slider parked on "now" and following the clock; otherwise the user picked a fixed time.
   const [picked, setPicked] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const liveObs = storm?.lastUpdate ? Date.parse(storm.lastUpdate) : null;
-  const start = Math.max(now - 48 * 3.6e6, track[0]?.time ?? now); // back up to 48 h of NHC past track
-  const end = endOfTomorrowET(now);
+  // Slider value = a UTC timestamp over [first, last] valid time of the track (past capped at 72 h).
+  const [start, end] = sliderRange(track, now);
   const live = picked == null;
   const t = live ? now : Math.min(Math.max(picked, start), end);
   const mags = useMemo(() => magnets(track.filter((p) => p.time >= start && p.time <= end), now), [track, start, end, Math.floor(now / 60_000)]);
@@ -59,27 +64,44 @@ export default function TimeMachine({ snap, storm, gis, now, onState }: {
   const st = stateAt(track, live && liveObs != null ? Math.min(liveObs, track[track.length - 1]?.time ?? liveObs) : t, home);
   if (st && live) st.time = now;
   const cpa = useMemo(() => closestApproach(track, home, now), [track, home.lat, home.lon, Math.floor(now / 60_000)]);
-  const advTime = track.find((p) => p.tau === 0)?.time ?? track[0]?.time ?? start;
   const trail = useMemo(() => pathBetween(track, Math.min(now, t), Math.max(now, t)), [track, Math.floor(now / 60_000), t]);
-  const uncertaintyMi = coneRadiusMi((t - advTime) / 3.6e6);
-  useEffect(() => { onState(st ? { ...st, trail, uncertaintyMi, live } : null); }, [st?.lat, st?.lon, st?.time, st?.windMph, trail.length, uncertaintyMi, live]);
+  const coneAt = advRec ? coneCircleAt(advRec, storm?.id ?? "", t) : null;
+  const uncertaintyMi = coneAt?.radiusMi ?? 0;
+  const radii = useMemo(() => radiiAt(track, live && liveObs != null ? liveObs : t), [track, t, live, liveObs]);
+  const rKey = [radii.r34, radii.r50, radii.r64].map((q) => q?.map(Math.round).join(",")).join("|");
+  useEffect(() => { onState(st ? { ...st, trail, uncertaintyMi, live, radii, coneTau: coneAt?.tau ?? null } : null); }, [st?.lat, st?.lon, st?.time, st?.windMph, trail.length, uncertaintyMi, live, rKey]);
   const hourly = snap?.forecast?.hourly ?? [];
   const homeHour = hourAt(hourly, t);
   const activeAlerts = alertsActiveAt(snap?.alerts ?? [], t);
   const windows = useMemo(() => adviceWindows(hourly, now, end), [hourly, Math.floor(now / 3.6e6), end]);
+  // Playback on requestAnimationFrame: 4 storm-hours per real second, smooth (map sources update via setData).
   useEffect(() => {
     if (!playing) return;
-    const id = setInterval(() => setPicked((p) => { const n = (p ?? now) + STEP; return n > end ? start : n; }), 400);
-    return () => clearInterval(id);
+    let raf = 0, last = performance.now();
+    const step = (ts: number) => {
+      const dt = ts - last; last = ts;
+      setPicked((p) => { const n = (p ?? now) + dt * 4 * 3.6e3; return n > end ? start : n; });
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
   }, [playing, start, end]);
 
   if (!storm) return <div className="tm"><div className="tm-empty">No active storm from the National Hurricane Center right now.</div></div>;
   if (!track.length) return <div className="tm"><div className="tm-empty">Waiting for the National Hurricane Center forecast…</div></div>;
-  const adv = gis?.advisoryNumber ?? storm.advisoryNumber ?? null;
+  const adv = advRec?.advNum ?? gis?.advisoryNumber ?? storm.advisoryNumber ?? null;
+  const advList = (tl?.advisories ?? []).filter((a) => a.kind === "full");
   const ticks = track.filter((p) => p.time >= now && p.time <= end && p.tau != null);
 
   return (
     <div className="tm">
+      {advList.length > 1 && onAdv && <label className="tm-adv">Forecast to show:{" "}
+        <select value={adv && !isLatest ? adv : ""} onChange={(e) => { setPlaying(false); onAdv(e.target.value || null); }}>
+          <option value="">Latest ({tl?.latest ? advisoryLabel(tl.latest) : "newest"})</option>
+          {advList.filter((a) => a.advNum !== tl?.latest?.advNum).map((a) => <option key={a.advNum} value={a.advNum}>{advisoryLabel(a)}</option>)}
+        </select>
+        {!isLatest && <em className="tm-oldadv"> Showing an older forecast. The storm's real path is the solid past track.</em>}
+      </label>}
       <div className="tm-time">{fmtTime(t)} {live ? <span className="tm-live">● Live</span> : <span className="tm-now">{t < now ? "(past position)" : "(forecast)"}</span>}</div>
       <div className="tm-slider">
         <button className="btn" onClick={() => setPlaying((p) => !p)}>{playing ? "Pause" : "Play"}</button>
@@ -135,6 +157,7 @@ export default function TimeMachine({ snap, storm, gis, now, onState }: {
         <button className="btn tick" onClick={() => { setPlaying(false); setPicked(Math.round(cpa.time / STEP) * STEP); }}>show</button></p>}
       {hasHome && <p className="tm-text">Your home is {storm.inCone ? "inside" : "outside"} the National Hurricane Center's 5-day forecast cone (advisory {adv ?? "?"}).</p>}
       <p className="tm-text cone-note">{CONE_TEXT}</p>
+      <p className="tm-src">Times are Eastern (ET), like NHC advisories. West of the Apalachicola River (most of the Panhandle) clocks run on Central time, 1 hour earlier. Track: NHC best track (past) and {isLatest ? "the latest official forecast" : `forecast ${adv}`}, valid times in UTC, filled in along great circles.{coneAt ? ` Ring: time-sliced cone circle, NHC 2026 radii (${Math.round(coneAt.tau)} h into the forecast, about ${Math.round(uncertaintyMi)} miles).` : ""}</p>
       <p className="tm-warn">Positions come from the National Hurricane Center forecast and are filled in between its forecast points. The further ahead, the less certain (the dashed ring on the map shows the typical error). Official forecasts and alerts always win.</p>
     </div>
   );

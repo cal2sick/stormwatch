@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import type { Forecast, NwsAlert, Outage } from "./types";
+import type { Forecast, NwsAlert, Outage, Snapshot } from "./types";
 
 // The "selected location" lives ONLY in this browser (localStorage). It is sent only to this app's own
 // local server, which passes it to the geocoder, the National Weather Service and the outage feeds. Never logged.
 export interface Place { name: string; lat: number; lon: number; source: string }
-export interface PlaceWeather { forecast: Forecast | null; alerts: NwsAlert[]; office: string | null }
+export interface PlaceWeather { forecast: Forecast | null; alerts: NwsAlert[]; office: string | null; threat?: Snapshot["threat"] }
 export interface NearbyOutages {
   radiusMi: number; pollSeconds: number; checked: string; outages: (Outage & { source: string })[]; totalCustomers: number;
   feeds: { name: string; status: "ok" | "error"; count: number; credit?: string; map?: string }[];

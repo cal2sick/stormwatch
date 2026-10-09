@@ -10,6 +10,7 @@ import { activeAt, CONE_TEXT, FLOOD_KINDS, HAZARD_HEX, HAZARD_NAME, hazardFeatur
 import { circle } from "../timeline";
 import { className, ktToMph } from "../format";
 import { needsPan, radarForTime, stormLabel } from "./sliderView";
+import { quadRing, type RadiiState } from "../stormTime";
 
 const OFM_STYLE = "https://tiles.openfreemap.org/styles/dark";
 // Offline / low-bandwidth fallback: no basemap tiles at all.
@@ -31,7 +32,7 @@ function graticule(): GeoJSON.FeatureCollection {
 
 function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); return d.toISOString().slice(0, 10); }
 
-export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean }
+export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean; radii?: RadiiState }
 export interface Landmark { name: string; lat: number; lon: number; kind: string; source?: string }
 
 export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [] }: {
@@ -84,7 +85,10 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
         });
         m.on("mouseenter", "hz-fill", () => (m.getCanvas().style.cursor = "pointer"));
         m.on("mouseleave", "hz-fill", () => (m.getCanvas().style.cursor = ""));
-        for (const id of ["tm-trail", "tm-ring", "tm-toa"]) m.addSource(id, { type: "geojson", data: EMPTY });
+        for (const id of ["tm-trail", "tm-ring", "tm-toa", "tm-wind"]) m.addSource(id, { type: "geojson", data: EMPTY });
+        // Wind field at the slider time: NHC 34 / 50 / 64-knot radii by quadrant, interpolated in time.
+        m.addLayer({ id: "tm-wind-fill", type: "fill", source: "tm-wind", paint: { "fill-color": ["match", ["get", "kt"], 64, "#d6336c", 50, "#f08c00", "#ffd43b"], "fill-opacity": 0.16 } });
+        m.addLayer({ id: "tm-wind-line", type: "line", source: "tm-wind", paint: { "line-color": ["match", ["get", "kt"], 64, "#d6336c", 50, "#f08c00", "#ffd43b"], "line-width": 1.2, "line-opacity": 0.8 } });
         m.addLayer({ id: "tm-ring-fill", type: "fill", source: "tm-ring", paint: { "fill-color": "#ff5a4f", "fill-opacity": 0.08 } });
         m.addLayer({ id: "tm-ring-line", type: "line", source: "tm-ring", paint: { "line-color": "#ff5a4f", "line-width": 1, "line-dasharray": [3, 2] } });
         m.addLayer({ id: "tm-toa-line", type: "line", source: "tm-toa", paint: { "line-color": "#e3a64a", "line-width": 2, "line-opacity": 0.9 } });
@@ -179,7 +183,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     const src = (id: string) => m.getSource(id) as GeoJSONSource | undefined;
     if (!ghost) {
       ghostMk.current?.remove(); ghostMk.current = null;
-      for (const id of ["tm-trail", "tm-ring", "tm-toa"]) src(id)?.setData(EMPTY);
+      for (const id of ["tm-trail", "tm-ring", "tm-toa", "tm-wind"]) src(id)?.setData(EMPTY);
       return;
     }
     if (!ghostMk.current) {
@@ -191,10 +195,14 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     const lbl = ghostMk.current.getElement().querySelector(".pin-label"); if (lbl) lbl.textContent = ghost.label;
     src("tm-trail")?.setData(fc(ghost.trail.length >= 2 ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: ghost.trail } }] : []));
     src("tm-ring")?.setData(fc(ghost.uncertaintyMi > 1 ? [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [circle(ghost.lon, ghost.lat, ghost.uncertaintyMi)] } }] : []));
+    const rd = ghost.radii;
+    src("tm-wind")?.setData(fc(!rd ? [] : ([[34, rd.r34], [50, rd.r50], [64, rd.r64]] as const).filter(([, q]) => q).map(([kt, q]) =>
+      ({ type: "Feature", properties: { kt }, geometry: { type: "Polygon", coordinates: [quadRing(ghost.lon, ghost.lat, q!)] } }) as GeoJSON.Feature)));
     const toa = (gis?.toaMostLikely?.features ?? []).filter((f) => Date.parse(String((f.properties as any)?.time)) <= ghost.time);
     src("tm-toa")?.setData(fc(toa));
     // Debug hook for headless checks (WebGL may not paint there): last position the map was given.
     (window as any).__sliderMarker = { lng: ghostMk.current.getLngLat().lng, lat: ghostMk.current.getLngLat().lat, time: ghost.time, trailPoints: ghost.trail.length, live: ghost.live,
+      windAreas: [rd?.r34, rd?.r50, rd?.r64].filter(Boolean).length, coneMi: Math.round(ghost.uncertaintyMi),
       stormIcons: document.querySelectorAll(".pin-storm-main").length };
     // Faint "now" dot only when looking at another time.
     src("storm-now")?.setData(fc(!ghost.live && storm ? [pt(storm.lon, storm.lat, {})] : []));
@@ -204,7 +212,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     lastPanT.current = ghost.time;
     const c = m.getContainer(), p = m.project([ghost.lon, ghost.lat]);
     if (moved && needsPan(p.x, p.y, c.clientWidth, c.clientHeight, 0.7)) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 300 });
-  }, [ready, main?.lat, main?.lon, main?.label, main?.uncertaintyMi, main?.live, storm?.lat, storm?.lon, gis]);
+  }, [ready, main?.lat, main?.lon, main?.label, main?.uncertaintyMi, main?.live, main?.radii, storm?.lat, storm?.lon, gis]);
   useEffect(() => () => { ghostMk.current?.remove(); ghostMk.current = null; }, []);
 
   // Selected location (browser-only): pin + fly there once per new place; nearby outage points.
@@ -288,6 +296,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
   return (
     <div className="map-wrap">
       <div ref={el} className="map" />
+      <div className="map-top">
       <div className="map-chips">
         {onMode && (Object.keys(VIEW_LABELS) as ViewMode[]).map((v) => (
           <button key={v} className={`btn mode ${mode === v ? "on" : ""}`} onClick={() => onMode(v)} aria-pressed={mode === v}>{VIEW_LABELS[v]}</button>
@@ -297,6 +306,8 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
         ))}
         {snap?.home.configured && <button className="btn" onClick={() => { fitted.current = null; map.current?.flyTo({ center: [snap.home.lon, snap.home.lat], zoom: 6 }); }}>center home</button>}
       </div>
+      {main && <div className="map-time" data-testid="map-time">Map shows: {new Date(main.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET{main.live ? " (live)" : main.time > Date.now() ? " (forecast)" : " (past)"}</div>}
+      </div>
       {layers.radar && !lowBandwidth && frames.length > 0 && (
         <div className="radar-ctl">
           {radarLive && <button className="btn" onClick={() => setPlaying((p) => !p)}>{playing ? "pause" : "play"}</button>}
@@ -304,9 +315,9 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
           {shownFrame >= 0 && <div className="frame-dots">{frames.map((_, i) => <i key={i} className={i === shownFrame ? "on" : ""} />)}</div>}
         </div>
       )}
-      {main && <div className="map-time" data-testid="map-time">Map shows: {new Date(main.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET{main.live ? " (live)" : main.time > Date.now() ? " (forecast)" : " (past)"}</div>}
-      <div className="map-legend">
-        {ghost && <div><span style={{ color: "#ff5a4f" }}>━</span> Path from now to the selected time · <span style={{ color: "#ff5a4f" }}>◌</span> Likely error range at that time · <span style={{ color: "#e3a64a" }}>━</span> Where tropical-storm winds have likely arrived by then</div>}
+      <details className="map-legend" open={!matchMedia("(max-width: 900px)").matches}>
+        <summary>Map key and sources</summary>
+        {ghost && <div><span style={{ color: "#ff5a4f" }}>━</span> Path from now to the selected time · <span style={{ color: "#ff5a4f" }}>◌</span> Time-sliced cone circle, NHC 2026 radii (where the center will likely be, 2 times in 3) · <span style={{ color: "#ffd43b" }}>▧</span><span style={{ color: "#f08c00" }}>▧</span><span style={{ color: "#d6336c" }}>▧</span> Tropical-storm, 58 mph and hurricane-force wind areas at that time (NHC wind radii) · <span style={{ color: "#e3a64a" }}>━</span> Where tropical-storm winds have likely arrived by then</div>}
         <div className={`stale-${st("nhcgis")}`}>{storm ? `${className(storm.classification)} ${storm.name}` : "No storm"} · NHC advisory {gis?.advisoryNumber ?? "—"} · {fmtET(gis?.issuance)}</div>
         {layers.cone && <div className="cone-note">{CONE_TEXT}</div>}
         {(layers.tornado || layers.flood) && <div className={`stale-${st("hazards")}`}>
@@ -322,7 +333,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
         <div className={`stale-${st("ndbc")}`}>Buoys near the storm (NOAA) · {fmtET(f.ndbc?.sourceTime)}</div>
         <div className="ww-key"><i style={{ background: WW_HEX.HWR }} />Hurricane warning <i style={{ background: WW_HEX.HWA }} />Hurricane watch <i style={{ background: WW_HEX.TWR }} />Tropical storm warning <i style={{ background: WW_HEX.TWA }} />Tropical storm watch</div>
         {layers.nightlights && <div>NASA night lights satellite ({yesterdayUtc()}, clouds block it; post-storm use)</div>}
-      </div>
+      </details>
     </div>
   );
 }

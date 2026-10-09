@@ -7,7 +7,7 @@ import path from "node:path";
 import { HOST, loadLandmarks, PORT, ROOT } from "./config.js";
 import { cleanQuery, geocode, nearbyOutages, placeWeather, validLatLon } from "./sources/place.js";
 import { getTimelines, listAdvisories, loadAdvisory } from "./advisories.js";
-import { bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
+import { threatForPlace, bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
 await app.register(cors, { origin: true });
@@ -43,7 +43,7 @@ app.get("/api/geocode", quiet, async (req, reply) => {
 app.get("/api/place", quiet, async (req, reply) => {
   const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);
   if (!p) return reply.code(400).send({ error: "bad lat/lon" });
-  try { return await placeWeather(p); } catch { return reply.code(502).send({ error: "National Weather Service data is not available for this location right now." }); }
+  try { const w = await placeWeather(p); return { ...w, threat: threatForPlace(p, w.alerts) }; } catch { return reply.code(502).send({ error: "National Weather Service data is not available for this location right now." }); }
 });
 app.get("/api/outages", quiet, async (req, reply) => {
   const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);

@@ -18,6 +18,7 @@ import Panel from "./hud/Panel";
 import TimeMachine, { type SliderState } from "./hud/TimeMachine";
 import { useSnapshot } from "./useSnapshot";
 import { useGis } from "./useGis";
+import { useAdvisory, useTimeline } from "./useTimeline";
 import { useNow } from "./useNow";
 import { speak, useAlerts } from "./useAlerts";
 import { DEFAULT_LAYERS, effectiveLayers, type LayerKey, type ViewMode } from "./map/layers";
@@ -45,6 +46,8 @@ export default function App() {
   const [stormId, setStormId] = useState<string | null>(null);
   const [tm, setTm] = useState<SliderState | null>(null);
   const [more, setMore] = useState(false);
+  const timelines = useTimeline(snap?.gisVersion);
+  const [advPick, setAdvPick] = useState<string | null>(null);
   useAlerts(snap, prefs.voice, prefs.notify);
   const { place, setPlace, weather: placeWx, outages: placeOut, outageErr } = useSelectedPlace();
   // Readouts (distance, wind at the place, alerts) use the searched place when one is selected; else .env home.
@@ -55,6 +58,9 @@ export default function App() {
 
   // Selected storm: the user's pick if still active, else the nearest (never chosen by name).
   const storm = snap?.storms.find((s) => s.id === stormId) ?? snap?.storms[0];
+  const tl = storm ? timelines[storm.id.toLowerCase()] : undefined;
+  const pickedAdv = useAdvisory(storm?.id.toLowerCase(), advPick);
+  useEffect(() => { setAdvPick(null); }, [storm?.id]);
   // If this device has been cut off long enough that every feed is old, show DATA STALE locally too
   // (the server's own DATA STALE can't reach us while we're disconnected).
   const feeds = Object.values(snap?.feeds ?? {});
@@ -62,7 +68,9 @@ export default function App() {
   const view = snap && allStaleLocal && snap.threat.level !== "DATA STALE"
     ? { ...snap, threat: { ...snap.threat, level: "DATA STALE" as const, reasons: ["No fresh data for 30+ min on this device. Check official sources.", ...snap.threat.reasons.map((r) => `(last known) ${r}`)] } }
     : snap;
-  const level = view?.threat.level ?? "DATA STALE";
+  // A searched place gets its own threat level (same rules, its own alerts and distance); else the .env home.
+  const threatView = view && place && placeWx?.threat && view.threat.level !== "DATA STALE" ? { ...view, threat: { ...placeWx.threat, reasons: [`For ${place.name.split(",")[0]} (the place you looked up):`, ...placeWx.threat.reasons] } } : view;
+  const level = threatView?.threat.level ?? "DATA STALE";
   useEffect(() => { document.documentElement.style.setProperty("--threat", threatColor[level]); }, [level]);
 
   const toggleVoice = () => setPrefs((p) => { const v = !p.voice; if (v) speak("Voice alerts on."); else speechSynthesis?.cancel(); return { ...p, voice: v }; });
@@ -90,7 +98,7 @@ export default function App() {
             {snap!.storms.slice(0, 4).map((s) => <button key={s.id} className={`btn ${s.id === storm?.id ? "on" : ""}`} onClick={() => setStormId(s.id)}>{s.name}{snap!.home.configured ? `, ${Math.round(s.distanceMi)} miles away` : ""}</button>)}
           </div>
         )}
-        <ThreatLadder snap={view} />
+        <ThreatLadder snap={threatView} />
         <div className="top-right">
           <div className="clock">{new Date(now).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour12: false })}<small> ET</small><span className="zulu">{dtg(new Date(now).toISOString())}</span></div>
           <div className="toggles">
@@ -105,7 +113,7 @@ export default function App() {
         <aside className="col left">
           <Panel title="Where will the storm be? Pick a time" feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine"
             right={<button className="btn" onClick={() => setMore((v) => !v)}>{more ? "Show less" : "Show more panels"}</button>}>
-            <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} now={now} onState={setTm} />
+            <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} />
           </Panel>
           <Panel title="Look up a place" source="US Census Geocoder, OpenStreetMap Nominatim fallback" time={null} area="place">
             <LocationSearch place={place} onPick={setPlace} />
@@ -113,8 +121,8 @@ export default function App() {
           {place && <Panel title={`Power outages near ${place.name.split(",")[0]}`} source="utility outage feeds (config/outage-sources.json), ORNL ODIN" time={placeOut?.checked ?? null} area="place-outages">
             <OutagesNearby data={placeOut} err={outageErr} />
           </Panel>}
-          <Panel title="Your threat level and why" source="rules in config/thresholds.json over NWS + NHC" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
-            <ThreatLadder snap={view} variant="full" />
+          <Panel title={place ? `Threat level for ${place.name.split(",")[0]} and why` : "Your threat level and why"} source="rules in config/thresholds.json over NWS + NHC" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
+            <ThreatLadder snap={threatView} variant="full" />
           </Panel>
           <AlertList snap={snap} area="alerts" />
           <HazardsPanel snap={snap} time={hazardTime} area="hazards" />
@@ -128,7 +136,7 @@ export default function App() {
             <MapView snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
               place={place} placeOutages={placeOut?.outages ?? []}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
-              ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
+              ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, radii: tm.radii, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
               onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }} lowBandwidth={prefs.lowBw} />
           </div>
           {more && <div className="center-bottom">

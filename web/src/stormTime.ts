@@ -23,6 +23,8 @@ export function timelineTrack(tl: StormTimeline, adv: AdvisoryRecord | null, isL
   // Past/forecast boundary: the live position for the latest advisory, else the advisory's first forecast point.
   const cut = lv ? Math.max(lv.time, fc[0]?.time ?? -Infinity) : fc[0]?.time ?? Infinity;
   const L = lv?.time ?? cut;
+  // The live position carries no radii; use the latest best-track radii within 6 h of it.
+  if (lv && !lv.r34) { const nb = [...best].reverse().find((p) => p.time <= lv.time && lv.time - p.time <= 6 * 3.6e6); if (nb) { lv.r34 = nb.r34; lv.r50 = nb.r50; lv.r64 = nb.r64; } }
   const past = best.filter((p) => p.time <= L && (lv ? true : p.time < cut));
   const fut = lv ? fc.filter((p) => p.time > L) : fc;
   const pts = [...past, ...(lv && !past.some((p) => p.time === lv.time) ? [lv] : []), ...fut];

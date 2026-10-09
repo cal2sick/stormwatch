@@ -253,3 +253,15 @@ body { font-size: 14px; }
 .loc-results { list-style: none; padding: 0; margin: 6px 0; } .loc-results .btn { white-space: normal; text-align: left; font-size: 14px; margin: 2px 0; text-transform: none; font-variant: normal; }
 .pin-place svg * { fill: #4fb3ff; stroke: #070909; stroke-width: 1.5; } .pin-place .pin-label { position: absolute; left: 24px; top: 0; color: #9fd4ff; }
 .loc .btn, .outages .btn { font-size: 13px; text-transform: none; font-variant: normal; letter-spacing: 0; }
+
+/* v0.4: chips + "Map shows" stacked top-left so they never overlap; legend collapsible, never covers the radar note. */
+.map-top { position: absolute; top: 6px; left: 6px; right: 52px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; z-index: 3; pointer-events: none; }
+.map-top > * { pointer-events: auto; }
+.map-top .map-chips { position: static; max-width: 100%; }
+.map-top .map-time { position: static; transform: none; font-size: 16px; }
+.map-legend { bottom: 6px; max-width: min(420px, 48%); max-height: 45%; }
+.map-legend summary { cursor: pointer; font-weight: 700; letter-spacing: 1px; }
+.radar-ctl { max-width: calc(52% - 18px); flex-wrap: wrap; }
+.tm-adv { display: block; margin: 4px 0 8px; font-size: 13px; }
+.tm-adv select { background: #070909; color: var(--text); border: 1px solid var(--line2); font: inherit; max-width: 100%; }
+.tm-oldadv { display: block; color: #e3a64a; font-style: normal; }

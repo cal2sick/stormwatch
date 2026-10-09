@@ -139,6 +139,21 @@ function rebuild() {
   else bus.emit("feeds", { generatedAt: snapshot.generatedAt, feeds: snapshot.feeds });
 }
 
+/**
+ * Threat level for a searched place (browser-selected, never stored): same rules as home, using the place's own
+ * NWS alerts, storm distance from the place, and any tornado / flash flood warning polygon over the place.
+ */
+export function threatForPlace(p: { lat: number; lon: number }, alerts: Snapshot["alerts"]): Snapshot["threat"] {
+  const t = loadThresholds();
+  const place: Home = { name: "the selected place", lat: p.lat, lon: p.lon, configured: true };
+  const storms = snapshot.storms.map((s) => derive(s, place)).sort((a, b) => a.distanceMi - b.distanceMi);
+  const c = computeThreat(alerts, storms, t, false, Date.now());
+  const warn = hazardsAtPoint(activeAt(hazardList, Date.now()), p.lat, p.lon).filter((x) => x.kind === "tornadoWarning" || x.kind === "flashFloodWarning");
+  const reasons = c.reasons.map((r) => r.replace(/\byour point\b/g, "this place").replace(/\bof you\b/g, "of this place"));
+  return warn.length ? { level: "RED", reasons: [...warn.map((x) => `${x.title} polygon covers this place (${x.issuer})`), ...reasons], computedLevel: "RED", holdUntil: null }
+    : { level: c.level, reasons, computedLevel: c.level, holdUntil: null };
+}
+
 interface Job { key: string; source: string; url: () => string; run: () => Promise<string | null>; enabled?: () => boolean }
 const needsHome = () => loadHome().configured;
 
