@@ -31,6 +31,8 @@ import { threatColor } from "./format";
 import { stormLabel } from "./map/sliderView";
 import { useSelectedPlace } from "./useSelectedPlace";
 import LocationSearch, { EvacZone, OutagesNearby } from "./hud/LocationSearch";
+import OutageSummary from "./hud/OutageSummary";
+import { useOutageAreas } from "./useOutageAreas";
 import LocalFeed, { useFeedPoint } from "./hud/LocalFeed";
 
 function usePref<T>(key: string, init: T) {
@@ -59,6 +61,7 @@ export default function App() {
     forecast: placeWx?.forecast ?? null, alerts: placeWx?.alerts ?? [] } : snap;
   const hazardTime = tm?.time ?? now;
   const feedPoint = useFeedPoint(place, snap);
+  const outageAreas = useOutageAreas();
   const shownLayers = effectiveLayers(layers, prefs.mode);
 
   // Selected storm: the user's pick if still active, else the nearest (never chosen by name).
@@ -129,7 +132,8 @@ export default function App() {
           {place && <Panel title={`Evacuation zone for ${place.name.split(",")[0]}`} source="Florida Division of Emergency Management (Know Your Zone)" time={evac?.checked ?? null} area="place-evac">
             <EvacZone data={evac} err={evacErr} />
           </Panel>}
-          {place && <Panel title={`Power outages near ${place.name.split(",")[0]}`} source="utility outage feeds (config/outage-sources.json), ORNL ODIN" time={placeOut?.checked ?? null} area="place-outages">
+          {place && <Panel title={`Power outages near ${place.name.split(",")[0]}`} source="utility outage feeds (config/outage-sources.json), ORNL ODIN, EIA-861" time={placeOut?.checked ?? null} area="place-outages">
+            <OutageSummary areas={outageAreas} point={place} placeName={place.name.split(",")[0]} fips={placeOut?.county?.fips ?? null} now={now} />
             <OutagesNearby data={placeOut} err={outageErr} />
           </Panel>}
           <Panel title={place ? `Threat level for ${place.name.split(",")[0]} and why` : "Your threat level and why"} source="rules in config/thresholds.json over NWS + NHC" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
@@ -146,7 +150,7 @@ export default function App() {
         <section className="col center">
           <div className="map-frame" data-area="map">
             <MapView onJump={(t) => setJump((j) => ({ t, seq: j.seq + 1 }))} snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
-              place={place} placeOutages={placeOut?.outages ?? []} evacZones={evac?.countyZones ?? null}
+              place={place} placeOutages={placeOut?.outages ?? []} evacZones={evac?.countyZones ?? null} outageAreas={outageAreas}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
               ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, radii: tm.radii, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
               onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }} lowBandwidth={prefs.lowBw} />
@@ -157,7 +161,7 @@ export default function App() {
           </div>}
         </section>
         {more && <aside className="col right">
-          <PowerPanel snap={snap} area="power" />
+          <PowerPanel snap={snap} area="power" areas={outageAreas} now={now} />
           <RiversPanel snap={snap} area="rivers" />
           <TidesPanel snap={snap} area="tides" />
           <BuoysPanel snap={snap} area="buoys" />

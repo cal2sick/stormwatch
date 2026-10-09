@@ -46,7 +46,7 @@ export function OutagesNearby({ data, err }: { data: NearbyOutages | null; err: 
   const top = data.outages.slice(0, 8);
   return (
     <div className="outages" data-testid="outages-nearby">
-      {data.coverage === "point-feed" && <p className="tm-big"><b>{data.outages.length}</b> outage{data.outages.length === 1 ? "" : "s"} within {data.radiusMi} miles, <b>{data.totalCustomers.toLocaleString()}</b> customers out.</p>}
+      {data.coverage === "point-feed" && <p className="tm-text"><b>{data.outages.length}</b> outage{data.outages.length === 1 ? "" : "s"} within {data.radiusMi} miles, <b>{data.totalCustomers.toLocaleString()}</b> customers out.</p>}
       {data.note && <p className="tm-text">{data.note}</p>}
       {top.length > 0 && <ul className="tm-alerts">{top.map((o, i) => <li key={i}><b>{o.customers.toLocaleString()} customer{o.customers === 1 ? "" : "s"}</b>, {o.distanceMi} miles away · {o.cause ?? "cause unknown"} · {o.etr ? <>estimated fix {fmtET(o.etr)}{o.etrPassed ? " (time passed)" : ""}</> : "no fix time yet"} · {o.source}</li>)}</ul>}
       {data.county && <p className="tm-text">{data.county.name}: {data.county.rows.length ? data.county.rows.map((r) => `${r.utility} ${r.customers.toLocaleString()} out`).join(", ") : "no utilities in this county report to the national feed right now"} <small>({data.county.source})</small></p>}

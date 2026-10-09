@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6.0 (2026-10-09, branch `preview`)
+
+Power outage upgrade, modeled on how the best outage maps present the numbers (design ideas only; no outside data copied).
+
+- **Headline for the selected place:** big "customers out" and "% out of N customers" for the live utility feed that serves it, "updated X min ago" from the utility's own feed time (amber OUT OF DATE after 15 minutes), and which utilities near it are not counted because they have no free live feed.
+- **Map shading by % out with one legend (0 / 10 / 30 / 60 / 100%):** City of Tallahassee Utilities regions (the utility's own region shapes; shade = share of all the utility's customers) and county outlines from ORNL ODIN (shaded only where ODIN gives meters served, otherwise dashed outline + count). Click a region or county for details.
+- **Per-utility table:** out, customers served, % out, estimated restore (or how many estimates have already passed), source and time, with a link to each utility's map. Served counts are from the U.S. Energy Information Administration Form EIA-861 (2024), whole-utility Florida totals, and labeled as such.
+- **24-hour sparkline** from the app's own checks every 3 minutes, saved to `data/outage-history.jsonl` (totals only, kept 7 days): peak, and rising / restoring / steady versus an hour ago.
+- **Clustered outage points** for the whole City of Tallahassee Utilities area: grouped circles sized by customers with the customer total; click to zoom in.
+- **Compare on PowerOutage.us** link (link only; their numbers are never used).
+- **Map key** is now collapsed by default to a small "Map key" button so it never covers the bottom-right of the map; open it to see the legend and sources, "hide" to close. The choice is remembered on this device.
+- New `/api/outage-areas` route. 13 new tests (region matching, ODIN grouping, % math, ETR summary, history parsing, headline and table rules, ramp, sparkline and trend).
+
 ## v0.5.0 (2026-10-09, branch `preview`)
 
 Radar fix, live vs forecast made obvious, forecast radar, and a local updates feed.

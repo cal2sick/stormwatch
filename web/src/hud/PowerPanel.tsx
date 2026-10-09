@@ -1,12 +1,15 @@
 import type { Snapshot } from "../types";
 import Panel from "./Panel";
 import { fmtClockET, fmtET } from "../time";
+import OutageSummary from "./OutageSummary";
+import type { OutageAreas } from "../outages";
 
 /** Power: optional live outage plugins (off by default) plus link-outs. See docs/DATA-SOURCES.md. */
-export default function PowerPanel({ snap, area }: { snap: Snapshot | null; area?: string }) {
+export default function PowerPanel({ snap, area, areas = null, now }: { snap: Snapshot | null; area?: string; areas?: OutageAreas | null; now?: number }) {
   const c = snap?.power.local, o = snap?.power.odin;
   return (
     <Panel title="Power outages" feed={snap?.feeds.power ?? snap?.feeds.odin} source={c ? `${c.name} (as of fetch)` : "links only (no live outage feed configured)"} area={area}>
+      <OutageSummary areas={areas} point={snap?.home.configured ? { lat: snap.home.lat, lon: snap.home.lon } : null} placeName={snap?.home.configured ? snap.home.name : null} now={now} />
       {c && <div className="big-stats">
         <div><b className={c.totalCustomers > 0 ? "hot" : ""}>{c.totalCustomers}</b><span>Customers without power</span></div>
         <div><b>{c.count}</b><span>Outages</span></div>

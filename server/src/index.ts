@@ -10,6 +10,7 @@ import { cleanQuery, geocode, nearbyOutages, placeWeather, validLatLon } from ".
 import { getTimelines, listAdvisories, loadAdvisory } from "./advisories.js";
 import { threatForPlace, bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
 import { localFeed } from "./sources/localFeed.js";
+import { getOutageAreas, startOutageHistory } from "./sources/outageAreas.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
 await app.register(cors, { origin: true });
@@ -63,6 +64,11 @@ app.get("/api/outages", quiet, async (req, reply) => {
   try { return await nearbyOutages(p); } catch { return reply.code(502).send({ error: "Outage data is not available right now." }); }
 });
 
+/** Utility-wide outage totals, % out, region/county shapes and our own 24 h history. No location in or out. */
+app.get("/api/outage-areas", async (_req, reply) => {
+  try { return await getOutageAreas(); } catch { return reply.code(502).send({ error: "Outage data is not available right now." }); }
+});
+
 app.register(async (f) => {
   f.get("/ws", { websocket: true }, (socket) => {
     socket.send(JSON.stringify({ type: "snapshot", snapshot: getSnapshot() }));
@@ -82,4 +88,5 @@ if (existsSync(dist)) {
 }
 
 startPolling();
+startOutageHistory();
 await app.listen({ port: PORT, host: HOST });

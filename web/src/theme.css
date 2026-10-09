@@ -303,3 +303,27 @@ body { font-size: 14px; }
 .lf-kind { font-weight: 700; letter-spacing: 1px; color: #cfd8d2; }
 .lf-new { background: #fab005; color: #1a1300; padding: 0 5px; font-size: 10px; }
 .lf-title { font-weight: 700; margin: 2px 0; } .lf-text { font-size: 12px; color: #cfd8d2; } .lf-src { font-size: 10px; color: #7d8a83; margin-top: 2px; }
+
+/* v0.6: outage headline, table, sparkline, one % ramp; collapsible map key that stays out of the way */
+.out-head { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-end; margin: 4px 0 6px; }
+.out-big b { display: block; font-size: 30px; line-height: 1; color: var(--bright); } .out-big b.hot { color: #ffb020; }
+.out-big span { font-size: 12px; color: var(--dim); }
+.out-meta { font-size: 13px; line-height: 1.35; flex: 1 1 180px; }
+.out-spark svg { display: block; background: #0b0f0e; border: 1px solid var(--line2); }
+.out-spark polyline { fill: none; stroke: #ffb020; stroke-width: 1.6; vector-effect: non-scaling-stroke; } .out-spark .axis { stroke: #2b332f; }
+.out-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0; }
+.out-table th, .out-table td { text-align: left; padding: 3px 4px; border-bottom: 1px solid #1c2421; vertical-align: top; }
+.out-table th { color: var(--dim); font-weight: 600; } .out-table tr.link td { color: #aab3ae; }
+.out-table a { color: #9fd4ff; }
+.out-ramp { display: grid; grid-template-columns: auto; gap: 1px; margin: 2px 0 4px; max-width: 220px; }
+.out-ramp-t { font-size: 11px; color: var(--dim); }
+.out-ramp-bar { display: flex; height: 8px; } .out-ramp-bar i { flex: 1; }
+.out-ramp-l { display: flex; justify-content: space-between; font-size: 10px; } .out-ramp-l b { font-weight: 500; }
+.map-key-btn { position: absolute; right: 6px; bottom: 32px; z-index: 3; font: inherit; font-size: 13px; font-weight: 700; padding: 4px 10px; cursor: pointer; background: #070909ee; color: var(--text); border: 1px solid var(--line2); }
+.map-legend { right: 6px; bottom: 32px; max-width: min(380px, 42%); max-height: min(40%, 260px); overflow-y: auto; }
+.map-legend-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; position: sticky; top: -5px; background: #070909; padding: 2px 0 4px; }
+.map-legend-head .btn { font-size: 12px; text-transform: none; }
+@media (max-width: 900px) { .map-legend { max-width: calc(100% - 12px); max-height: 50%; } }
+.out-src { display: block; font-size: 11px; }
+.out-table td:nth-child(n+2), .out-table th:nth-child(n+2) { white-space: nowrap; } .out-table td:nth-child(5) { white-space: normal; }
+.map-legend { max-height: min(40%, 260px); }

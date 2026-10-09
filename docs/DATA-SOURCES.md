@@ -69,6 +69,14 @@ NHC wind speed probabilities, storm surge (P-Surge), WPC rainfall, model tracks 
 - **Outage registry** `config/outage-sources.json`: `arcgis` entries are public ArcGIS outage-point queries (no key) with a bbox; `link` entries are utilities with no free machine feed (link-out only). Never add feeds that need a login, a key copied out of a web page, or a CAPTCHA.
 - **ORNL ODIN** `odin.ornl.gov/odi?format=JSON`: county-level outage counts for utilities that report (cached 10 min).
 
+## Outage areas, % out and history (v0.6.0)
+- `/api/outage-areas` (no location in or out): utility-wide totals for every `arcgis` source, % out, estimated restore times, region and county shapes, and our own 24-hour history. Rebuilt at most once per `pollSeconds` (3 min).
+- **Customers served (the % denominator):** U.S. Energy Information Administration **Form EIA-861, 2024 data year**, `Sales_Ult_Cust_2024.xlsx`, TOTAL Customers, Florida (https://www.eia.gov/electricity/data/eia861/). Stored as `served` per source and in `eia861` (by EIA utility id) in `config/outage-sources.json`. These are whole-utility Florida totals, not county counts, so % out is for the whole utility. Update once a year.
+- **City of Tallahassee Utilities regions:** layer 2 (`Tallahassee_Regions`) of the utility's public outage MapServer, cached 24 h. Outage points carry a region number; the utility does not publish customers per region, so a region's shade is its customers out as a share of all the utility's customers (labeled on the map). Feed time comes from the service's `UPDATE_PROPERTIES` table (layer 3 `TIMESTAMP`).
+- **County outlines:** U.S. Census TIGERweb `State_County/MapServer/1` (keyless), only for counties ORNL ODIN reports in Gulf and Southeast states, cached 24 h. Shaded by % only when ODIN includes meters served; otherwise outlined with the count.
+- **History:** every poll the server appends `{t, out: {sourceId: customersOut, "odin:<fips>": n}}` to `data/outage-history.jsonl` (gitignored; utility and county totals only, never a location), pruned to `historyHours` (default 7 days). The panel shows the last 24 hours, peak and trend.
+- **Compare on PowerOutage.us:** a plain link only (`compare` in the config, by county FIPS or state). PowerOutage.us data is a commercial product licensed for personal use only: never fetch, cache or copy it. Duke Energy Florida, Talquin and FPL stay link-only (their maps need keys, CAPTCHAs or are undocumented).
+
 ## Storm timeline, radar, observations, evacuation zones, cameras (v0.4.0)
 
 - **One UTC timeline.** Every storm position is normalized to `{ validUTC, tau, lat, lon, vmaxKt, mslp, r34, r50, r64, src }` where `src` is `BEST` (ATCF best track), `OFCL` (official forecast) or `LIVE` (CurrentStorms.json). The slider value is a UTC timestamp; positions are great-circle interpolated by valid time (never array index, never issue time); intensity and wind radii are linear.

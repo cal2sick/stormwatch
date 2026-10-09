@@ -11,6 +11,8 @@ import { circle } from "../timeline";
 import { className, ktToMph } from "../format";
 import { goesTimeAt, hrrrRadarUrl, iemRadarUrl, needsPan, phaseAt, radarForTime, radarViewAt, stormLabel, type Phase } from "./sliderView";
 import { quadRing, type RadiiState } from "../stormTime";
+import { fmtPct, OUTAGE_FILL_EXPR, type OutageAreas } from "../outages";
+import { OutageRamp } from "../hud/OutageSummary";
 
 const OFM_STYLE = "https://tiles.openfreemap.org/styles/dark";
 // Offline / low-bandwidth fallback: no basemap tiles at all.
@@ -36,7 +38,8 @@ function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); retur
 export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean; radii?: RadiiState }
 export interface Landmark { name: string; lat: number; lon: number; kind: string; source?: string }
 
-export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null }: {
+export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null, outageAreas = null }: {
+  outageAreas?: OutageAreas | null;
   evacZones?: GeoJSON.FeatureCollection | null; onJump?: (t: number | null) => void;
   place?: { name: string; lat: number; lon: number } | null; placeOutages?: { lat: number; lon: number; customers: number; cause: string | null; etr: string | null; source: string; distanceMi: number }[];
   ghost?: SliderPos | null; hazards?: Hazard[]; hazardTime: number; mode?: ViewMode; onMode?: (m: ViewMode) => void;
@@ -60,6 +63,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
       if (cancelled || !el.current) return;
       const m = new maplibregl.Map({ container: el.current, style, center: [-85.5, 29], zoom: 5, attributionControl: { compact: true } });
       map.current = m;
+      (window as any).__map = m; // debug hook for headless checks
       m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
       m.on("load", () => {
         baseLayers.current = (m.getStyle().layers ?? []).map((l) => l.id);
@@ -111,9 +115,34 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
         m.addLayer({ id: "evac-fill", type: "fill", source: "evac", paint: { "fill-color": ["match", ["get", "EZone"], "A", "#e03131", "B", "#f76707", "C", "#fab005", "D", "#74b816", "E", "#1c7ed6", "#7048e8"], "fill-opacity": 0.22 } });
         m.addLayer({ id: "evac-line", type: "line", source: "evac", paint: { "line-color": "#f2e9c9", "line-width": 0.6, "line-opacity": 0.6 } });
         m.addLayer({ id: "evac-label", type: "symbol", source: "evac", minzoom: 8, layout: { "text-field": ["concat", "Zone ", ["get", "EZone"]], "text-font": ["Noto Sans Regular"], "text-size": 11 }, paint: { "text-color": "#f2e9c9", "text-halo-color": "#070909", "text-halo-width": 1.5 } });
-        m.addSource("place-outages", { type: "geojson", data: EMPTY });
-        m.addLayer({ id: "place-outages", type: "circle", source: "place-outages", paint: {
+        // v0.6 outage areas: one % ramp (0/10/30/60/100). Counties (ORNL ODIN) and City of Tallahassee Utilities regions.
+        for (const id of ["out-counties", "out-regions"]) {
+          m.addSource(id, { type: "geojson", data: EMPTY });
+          m.addLayer({ id: `${id}-fill`, type: "fill", source: id, paint: { "fill-color": OUTAGE_FILL_EXPR, "fill-opacity": 0.35 } });
+          m.addLayer({ id: `${id}-line`, type: "line", source: id, paint: { "line-color": id === "out-regions" ? "#ffe066" : "#c8cfc6", "line-width": 1, "line-opacity": 0.7,
+            ...(id === "out-counties" ? { "line-dasharray": [2, 2] } : {}) } });
+          m.addLayer({ id: `${id}-label`, type: "symbol", source: id, minzoom: id === "out-regions" ? 9 : 6.5, layout: { "text-field": ["concat", ["get", "name"], "\n", ["to-string", ["get", "out"]], " out"],
+            "text-font": ["Noto Sans Regular"], "text-size": 11, "text-allow-overlap": false }, paint: { "text-color": "#ffe9a8", "text-halo-color": "#070909", "text-halo-width": 1.5 } });
+        }
+        // Outage points, clustered (circle size = customers out; the number = customers in the cluster).
+        m.addSource("place-outages", { type: "geojson", data: EMPTY, cluster: true, clusterRadius: 42, clusterMaxZoom: 13, clusterProperties: { customers: ["+", ["get", "customers"]] } });
+        m.addLayer({ id: "po-cluster", type: "circle", source: "place-outages", filter: ["has", "point_count"], paint: {
+          "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 10, 100, 15, 1000, 22, 10000, 30], "circle-color": "#ffb020", "circle-opacity": 0.75, "circle-stroke-color": "#070909", "circle-stroke-width": 1.5 } });
+        m.addLayer({ id: "po-cluster-n", type: "symbol", source: "place-outages", filter: ["has", "point_count"], layout: { "text-field": ["to-string", ["get", "customers"]], "text-font": ["Noto Sans Regular"], "text-size": 12, "text-allow-overlap": true },
+          paint: { "text-color": "#070909" } });
+        m.addLayer({ id: "place-outages", type: "circle", source: "place-outages", filter: ["!", ["has", "point_count"]], paint: {
           "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 4, 100, 7, 1000, 12], "circle-color": "#ffb020", "circle-opacity": 0.85, "circle-stroke-color": "#070909", "circle-stroke-width": 1 } });
+        m.on("click", "po-cluster", async (e) => {
+          const f = e.features?.[0]; if (!f) return;
+          const src = m.getSource("place-outages") as GeoJSONSource;
+          try { const z = await src.getClusterExpansionZoom((f.properties as any).cluster_id); m.easeTo({ center: (f.geometry as GeoJSON.Point).coordinates as [number, number], zoom: z }); } catch { /* ignore */ }
+        });
+        for (const id of ["out-regions-fill", "out-counties-fill"]) {
+          m.on("click", id, (e) => {
+            const p = e.features?.[0]?.properties as Record<string, any> | undefined; if (!p) return;
+            new maplibregl.Popup({ closeButton: true, className: "hud-popup", maxWidth: "320px" }).setLngLat(e.lngLat).setHTML(p.popup ?? "").addTo(m);
+          });
+        }
         for (const id of ["outages", "gauges", "buoys", "tides", "cameras"]) m.addSource(id, { type: "geojson", data: EMPTY });
         m.addLayer({ id: "cameras", type: "circle", source: "cameras", paint: { "circle-radius": 5, "circle-color": "#f2e9c9", "circle-stroke-color": "#3b5bdb", "circle-stroke-width": 2 } });
         m.addLayer({ id: "tides", type: "circle", source: "tides", paint: { "circle-radius": 5, "circle-color": ["step", ["get", "above"], "#4dabf7", 1, "#f08c00", 2, "#e03131"], "circle-stroke-color": "#070909", "circle-stroke-width": 1.5 } });
@@ -124,7 +153,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
           "circle-radius": 3.5, "circle-color": "#070909", "circle-stroke-color": "#c8cfc6", "circle-stroke-width": 1 } });
         m.addLayer({ id: "outages", type: "circle", source: "outages", paint: {
           "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 3, 100, 6, 1000, 10], "circle-color": "#d23c34", "circle-opacity": 0.85, "circle-stroke-color": "#070909", "circle-stroke-width": 1 } });
-        for (const id of ["outages", "gauges", "buoys", "tides", "cameras", "fcst-pts", "place-outages"]) {
+        for (const id of ["outages", "gauges", "buoys", "tides", "cameras", "fcst-pts", "place-outages", "po-cluster"]) {
           m.on("click", id, (e) => {
             const p = e.features?.[0]?.properties as Record<string, any> | undefined;
             if (!p) return;
@@ -247,9 +276,19 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
   useEffect(() => {
     if (!ready || !map.current) return;
     const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-    (map.current.getSource("place-outages") as GeoJSONSource | undefined)?.setData(fc(placeOutages.map((o) => pt(o.lon, o.lat, { customers: o.customers,
-      popup: `<b>Power outage</b><br>${o.customers} customer${o.customers === 1 ? "" : "s"} out · ${o.distanceMi} miles from the selected place<br>Cause: ${esc(o.cause ?? "unknown")}<br>Estimated fix: ${fmtET(o.etr)}<br><small>${esc(o.source)}</small>` }))));
-  }, [ready, placeOutages]);
+    // Every point from the free live feeds (whole service area), else the ones near the selected place.
+    const all = outageAreas?.points?.length ? outageAreas.points.map((o) => ({ ...o, distanceMi: null as number | null })) : placeOutages;
+    (map.current.getSource("place-outages") as GeoJSONSource | undefined)?.setData(fc(all.map((o) => pt(o.lon, o.lat, { customers: o.customers,
+      popup: `<b>Power outage</b><br>${o.customers} customer${o.customers === 1 ? "" : "s"} out${o.distanceMi != null ? ` · ${o.distanceMi} miles from the selected place` : ""}<br>Cause: ${esc(o.cause ?? "unknown")}<br>Estimated fix: ${fmtET(o.etr)}${o.etr && Date.parse(o.etr) < Date.now() ? " (time passed)" : ""}<br><small>${esc(o.source)}</small>` }))));
+    const popup = (title: string, p: any, extra: string) => `<b>${esc(title)}</b><br>${Number(p.out).toLocaleString()} customers out${p.pct != null ? ` · ${fmtPct(p.pct)}` : ""}<br>${extra}`;
+    (map.current.getSource("out-regions") as GeoJSONSource | undefined)?.setData(fc((outageAreas?.regions?.features ?? []).map((f) => ({ ...f,
+      properties: { ...f.properties, popup: popup(`City of Tallahassee Utilities, region ${(f.properties as any).name}`, f.properties, `${(f.properties as any).outages} outages · % = share of all the utility's customers (EIA-861)<br><small>City of Tallahassee Utilities outage map</small>`) } }))));
+    (map.current.getSource("out-counties") as GeoJSONSource | undefined)?.setData(fc((outageAreas?.counties?.features ?? []).map((f) => {
+      const u = (() => { try { return JSON.parse((f.properties as any).utilities ?? "[]"); } catch { return []; } })() as { name: string; out: number; utilityCustomers: number | null }[];
+      return { ...f, properties: { ...f.properties, popup: popup((f.properties as any).name, f.properties, `${u.map((x) => `${esc(x.name)}: ${x.out.toLocaleString()}${x.utilityCustomers ? ` (utility has ${x.utilityCustomers.toLocaleString()} customers, EIA-861)` : ""}`).join("<br>")}<br><small>ORNL ODIN, utilities that report to it only${(f.properties as any).pct == null ? "; no county customer total, so not shaded" : ""}</small>`) } };
+    })));
+    (window as any).__outages = { regions: outageAreas?.regions?.features.length ?? 0, counties: outageAreas?.counties?.features.length ?? 0, points: all.length };
+  }, [ready, placeOutages, outageAreas]);
 
   useEffect(() => { if (ready && map.current) (map.current.getSource("evac") as GeoJSONSource | undefined)?.setData(evacZones ?? EMPTY); }, [ready, evacZones]);
 
@@ -278,7 +317,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
     if (!ready || !m) return;
     const vis = (id: string, on: boolean) => m.getLayer(id) && m.setLayoutProperty(id, "visibility", on ? "visible" : "none");
     for (const [k, ids] of Object.entries(STORM_LAYER_IDS)) ids.forEach((id) => vis(id, layers[k as LayerKey]));
-    vis("outages", layers.outages); vis("place-outages", layers.outages);
+    vis("outages", layers.outages); ["place-outages", "po-cluster", "po-cluster-n", "out-regions-fill", "out-regions-line", "out-regions-label", "out-counties-fill", "out-counties-line", "out-counties-label"].forEach((id) => vis(id, layers.outages));
     HAZARD_LAYER_IDS.forEach((id) => vis(id, layers.tornado || layers.flood));
     vis("gauges", layers.gauges); vis("buoys", layers.buoys); vis("tides", layers.buoys); vis("cameras", layers.cameras);
     vis("landmarks-dot", layers.landmarks); vis("landmarks-label", layers.landmarks);
@@ -347,6 +386,9 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
     ? `${loopFrame.forecast ? "Playing FORECAST radar" : "Replaying the last 2 hours"} · ${loopFrame.forecast ? "for " : "radar at "}${fmtClockET(loopFrame.time)} ET`
     : view.label;
   (window as any).__radar = { kind: view.kind, phase, url: wantUrl, shownUrl: radarState.url, state: radarState.s, frameTime: view.kind === "none" ? null : view.frameTime, label: shownLabel };
+  // Map key: collapsed by default so it never covers the map; the choice is remembered on this device.
+  const [keyOpen, setKeyOpenState] = useState<boolean>(() => { try { return localStorage.getItem("sw-mapkey") === "open"; } catch { return false; } });
+  const setKeyOpen = (v: boolean) => { setKeyOpenState(v); try { localStorage.setItem("sw-mapkey", v ? "open" : "closed"); } catch { /* private mode */ } };
   const f = snap?.feeds ?? {};
   const st = (k: string) => (f[k] ? staleness(f[k].lastSuccess, f[k].pollSeconds) : "red");
 
@@ -385,8 +427,10 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
           {looping && <div className="frame-dots">{loopFrames.map((_, i) => <i key={i} className={i === loopIdx ? "on" : ""} />)}</div>}
         </div>
       )}
-      <details className="map-legend" open={!matchMedia("(max-width: 900px)").matches}>
-        <summary>Map key and sources</summary>
+      {!keyOpen && <button className="map-key-btn" data-testid="map-key-toggle" aria-expanded="false" onClick={() => setKeyOpen(true)}>Map key ▸</button>}
+      {keyOpen && <div className="map-legend" data-testid="map-legend" role="region" aria-label="Map key and sources">
+        <div className="map-legend-head"><b>Map key and sources</b><button className="btn" data-testid="map-key-close" aria-expanded="true" onClick={() => setKeyOpen(false)} title="Hide the map key">hide ✕</button></div>
+        {layers.outages && <div><OutageRamp />Power outages: Tallahassee regions (City of Tallahassee Utilities), dashed counties (ORNL ODIN), <span style={{ color: "#ffb020" }}>●</span> outages, grouped when zoomed out (number = customers).</div>}
         {ghost && <div><span style={{ color: "#ff5a4f" }}>━</span> Path from now to the selected time · <span style={{ color: "#ff5a4f" }}>◌</span> Time-sliced cone circle, NHC 2026 radii (where the center will likely be, 2 times in 3) · <span style={{ color: "#ffd43b" }}>▧</span><span style={{ color: "#f08c00" }}>▧</span><span style={{ color: "#d6336c" }}>▧</span> Tropical-storm, 58 mph and hurricane-force wind areas at that time (NHC wind radii) · <span style={{ color: "#e3a64a" }}>━</span> Where tropical-storm winds have likely arrived by then</div>}
         <div className={`stale-${st("nhcgis")}`}>{storm ? `${className(storm.classification)} ${storm.name}` : "No storm"} · NHC advisory {gis?.advisoryNumber ?? "—"} · {fmtET(gis?.issuance)}</div>
         {layers.cone && <div className="cone-note">{CONE_TEXT}</div>}
@@ -407,7 +451,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, lo
         {evacZones && evacZones.features.length > 0 && <div>Evacuation zones for the place you looked up (Florida Division of Emergency Management): <span style={{ color: "#e03131" }}>A</span> leaves first, then <span style={{ color: "#f76707" }}>B</span>, <span style={{ color: "#fab005" }}>C</span>, <span style={{ color: "#74b816" }}>D</span>, <span style={{ color: "#1c7ed6" }}>E</span>. Your county issues the orders.</div>}
         {layers.satellite && <div>Satellite: GOES-19 infrared (cloud tops; brighter = colder, stronger storms) at {fmtET(goes.time)}{goes.clamped ? " (latest available, images arrive about 30 minutes late; not a forecast)" : ""} · NOAA / NASA GIBS</div>}
         {layers.nightlights && <div>NASA night lights satellite ({yesterdayUtc()}, clouds block it; post-storm use)</div>}
-      </details>
+      </div>}
     </div>
   );
 }

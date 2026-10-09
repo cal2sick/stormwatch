@@ -3,11 +3,121 @@
   "pollSeconds": 180,
   "radiusMi": 25,
   "sources": [
-    { "id": "ctu", "type": "arcgis", "name": "City of Tallahassee Utilities", "bbox": [-84.45, 30.33, -84.15, 30.6],
+    {
+      "id": "ctu",
+      "type": "arcgis",
+      "name": "City of Tallahassee Utilities",
+      "bbox": [
+        -84.45,
+        30.33,
+        -84.15,
+        30.6
+      ],
       "url": "https://tallahassee-ags.esriemcs.com/arcgis/rest/services/TallahasseeOutageMap/MapServer/0/query?where=1%3D1&outFields=status,cause,customers,off,etr,outagetype,region&outSR=4326&f=json",
-      "map": "https://outagemap.talgov.com/", "credit": "Data: City of Tallahassee Utilities" },
-    { "id": "talquin", "type": "link", "name": "Talquin Electric Cooperative", "bbox": [-85.2, 30.0, -83.9, 30.75], "map": "https://my.talquinelectric.com/outages/maps/" },
-    { "id": "duke-fl", "type": "link", "name": "Duke Energy Florida", "bbox": [-85.5, 26.5, -80.5, 31.0], "map": "https://outagemap.duke-energy.com/" },
-    { "id": "fpl", "type": "link", "name": "Florida Power & Light (incl. former Gulf Power)", "bbox": [-87.7, 25.0, -79.9, 31.0], "map": "https://www.fplmaps.com/" }
-  ]
+      "map": "https://outagemap.talgov.com/",
+      "credit": "Data: City of Tallahassee Utilities",
+      "eiaId": 18445,
+      "served": 120220,
+      "servedSource": "EIA-861 2024 (Florida total)",
+      "regionsUrl": "https://tallahassee-ags.esriemcs.com/arcgis/rest/services/TallahasseeOutageMap/MapServer/2/query?where=1%3D1&outFields=NAME&outSR=4326&maxAllowableOffset=0.0005&f=geojson",
+      "timeUrl": "https://tallahassee-ags.esriemcs.com/arcgis/rest/services/TallahasseeOutageMap/MapServer/3/query?where=1%3D1&outFields=TIMESTAMP&returnGeometry=false&f=json",
+      "regionNote": "Region shapes: City of Tallahassee Utilities outage map (layer 2). Outage points carry a region number; the utility does not publish customers per region."
+    },
+    {
+      "id": "talquin",
+      "type": "link",
+      "name": "Talquin Electric Cooperative",
+      "bbox": [
+        -85.2,
+        30.0,
+        -83.9,
+        30.75
+      ],
+      "map": "https://my.talquinelectric.com/outages/maps/",
+      "eiaId": 18449,
+      "served": 57261,
+      "servedSource": "EIA-861 2024 (Florida total)"
+    },
+    {
+      "id": "duke-fl",
+      "type": "link",
+      "name": "Duke Energy Florida",
+      "bbox": [
+        -85.5,
+        26.5,
+        -80.5,
+        31.0
+      ],
+      "map": "https://outagemap.duke-energy.com/",
+      "eiaId": 6455,
+      "served": 2009464,
+      "servedSource": "EIA-861 2024 (Florida total)"
+    },
+    {
+      "id": "fpl",
+      "type": "link",
+      "name": "Florida Power & Light (incl. former Gulf Power)",
+      "bbox": [
+        -87.7,
+        25.0,
+        -79.9,
+        31.0
+      ],
+      "map": "https://www.fplmaps.com/",
+      "eiaId": 6452,
+      "served": 5905174,
+      "servedSource": "EIA-861 2024 (Florida total)"
+    }
+  ],
+  "_served": "served = total customers from the US Energy Information Administration Form EIA-861, 2024 data year, file Sales_Ult_Cust_2024.xlsx (column TOTAL Customers, Florida, all classes). https://www.eia.gov/electricity/data/eia861/ . It is the utility's whole Florida total, not one county. Update yearly.",
+  "historyHours": 168,
+  "eia861": {
+    "_about": "Customers by EIA utility id, Florida, EIA-861 2024 (Sales_Ult_Cust). Used to label ORNL ODIN county reports with the utility's size.",
+    "3502": [
+      "Choctawhatchee Electric Cooperative",
+      66479
+    ],
+    "5964": [
+      "Escambia River Electric Cooperative",
+      13224
+    ],
+    "6452": [
+      "Florida Power & Light",
+      5905174
+    ],
+    "6455": [
+      "Duke Energy Florida",
+      2009464
+    ],
+    "7785": [
+      "Gulf Coast Electric Cooperative",
+      22768
+    ],
+    "18360": [
+      "Suwannee Valley Electric Cooperative",
+      29392
+    ],
+    "18445": [
+      "City of Tallahassee Utilities",
+      120220
+    ],
+    "18449": [
+      "Talquin Electric Cooperative",
+      57261
+    ],
+    "19161": [
+      "Tri-County Electric Cooperative",
+      19951
+    ],
+    "20371": [
+      "West Florida Electric Cooperative",
+      29884
+    ]
+  },
+  "compare": {
+    "_about": "Link-only 'Compare on PowerOutage.us' targets by county FIPS. Link only: never fetch or copy their data (their terms allow personal use only).",
+    "default": "https://poweroutage.us/",
+    "12": "https://poweroutage.us/area/state/florida",
+    "12073": "https://poweroutage.us/area/county/321"
+  }
 }
