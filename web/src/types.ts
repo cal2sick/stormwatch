@@ -180,3 +180,37 @@ export interface StormGis {
   toaEarliest: GeoJSON.FeatureCollection | null;     // isochrones, props: time (ISO), label
   toaMostLikely: GeoJSON.FeatureCollection | null;
 }
+
+/** Wind radii in nautical miles by quadrant: [NE, SE, SW, NW]. 0 = none in that quadrant. */
+export type Quad = [number, number, number, number];
+/** One storm position on the unified UTC timeline (normalized from ATCF b-deck, a-deck OFCL, TCM text or CurrentStorms.json). */
+export interface TrackFix {
+  validUTC: string;          // ISO UTC: the time this position is valid (never the issue time)
+  tau: number | null;        // hours from the advisory's synoptic time (null for best track)
+  lat: number; lon: number;
+  vmaxKt: number | null; mslp: number | null;
+  r34: Quad | null; r50: Quad | null; r64: Quad | null;
+  src: "BEST" | "OFCL" | "LIVE";
+  stormType: string | null;  // e.g. HU, TS, EX, or TCM tag like "INLAND"
+}
+/** Immutable per-advisory snapshot (data/advisories/<storm>/<adv>.json). */
+export interface AdvisoryRecord {
+  stormId: string;
+  advNum: string;            // "12", "12A", or "OFCL 2026100912" for a-deck backfill
+  kind: "full" | "intermediate";
+  issuedUTC: string;
+  synopticUTC: string | null;
+  source: string;            // product the record came from
+  forecastFrom: string | null; // for intermediate advisories: the full advisory whose forecast still applies
+  points: TrackFix[];        // full: tau 0..120 official forecast; intermediate: the updated position only
+}
+export interface AdvisorySummary { advNum: string; kind: "full" | "intermediate"; issuedUTC: string; source: string }
+/** Everything the slider needs for one storm, on one UTC timeline. Served by /api/timeline. */
+export interface StormTimeline {
+  stormId: string; name: string;
+  best: TrackFix[];          // NHC best track (ATCF b-deck), past positions
+  live: TrackFix | null;     // latest NHC position (CurrentStorms.json, may be from an intermediate advisory)
+  latest: AdvisoryRecord | null; // latest full advisory forecast
+  advisories: AdvisorySummary[]; // newest first
+  updated: string;
+}

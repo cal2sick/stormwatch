@@ -23,18 +23,27 @@ export function pathBetween(track: TrackPoint[], t0: number, t1: number): [numbe
   return out;
 }
 
-/** Approximate NHC cone radius (statute miles) at a given number of hours after the advisory (2026 Atlantic averages, nm→mi). */
-const CONE_NM: [number, number][] = [[0, 0], [12, 26], [24, 41], [36, 55], [48, 70], [60, 88], [72, 102], [96, 151], [120, 220]];
-export function coneRadiusMi(hoursAfterAdvisory: number): number {
-  const h = Math.max(0, hoursAfterAdvisory);
-  for (let i = 1; i < CONE_NM.length; i++) {
-    const [h0, r0] = CONE_NM[i - 1], [h1, r1] = CONE_NM[i];
-    if (h <= h1) return (r0 + ((h - h0) / (h1 - h0)) * (r1 - r0)) * 1.15078;
+/**
+ * NHC 2026 cone: radius of the 2/3-probability circle (nautical miles) by forecast hour (tau, hours from the
+ * advisory's synoptic time). Source: https://www.nhc.noaa.gov/aboutcone.shtml (2026 season table).
+ */
+export const CONE_NM_2026: Record<"atlantic" | "pacific", [number, number][]> = {
+  atlantic: [[0, 0], [12, 25], [24, 39], [36, 49], [48, 62], [60, 77], [72, 95], [96, 134], [120, 200]],
+  pacific: [[0, 0], [12, 25], [24, 37], [36, 48], [48, 56], [60, 66], [72, 78], [96, 106], [120, 138]],
+};
+export const basinOf = (stormId: string | null | undefined): "atlantic" | "pacific" => (/^(ep|cp)/i.test(stormId ?? "") ? "pacific" : "atlantic");
+/** Cone circle radius in nautical miles at tau (linear between table rows; beyond 120 h holds the 120-h value). */
+export function coneRadiusNm(tau: number, basin: "atlantic" | "pacific" = "atlantic"): number {
+  const T = CONE_NM_2026[basin], h = Math.max(0, tau);
+  for (let i = 1; i < T.length; i++) {
+    const [h0, r0] = T[i - 1], [h1, r1] = T[i];
+    if (h <= h1) return r0 + ((h - h0) / (h1 - h0)) * (r1 - r0);
   }
-  return CONE_NM[CONE_NM.length - 1][1] * 1.15078;
+  return T[T.length - 1][1];
 }
+/** Same, in statute miles (what the map ring draws). */
+export const coneRadiusMi = (tau: number, basin: "atlantic" | "pacific" = "atlantic") => coneRadiusNm(tau, basin) * 1.15078;
 
-/** Circle polygon around a point (radius in miles). */
 export function circle(lon: number, lat: number, radiusMi: number, n = 64): [number, number][] {
   const out: [number, number][] = [];
   const dLat = radiusMi / 69.0, dLon = radiusMi / (69.0 * Math.cos((lat * Math.PI) / 180));

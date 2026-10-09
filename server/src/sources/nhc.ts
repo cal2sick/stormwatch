@@ -10,7 +10,7 @@ export interface RawStorm {
   id: string; name: string; classification: string; intensity?: string; pressure?: string;
   latitudeNumeric: number; longitudeNumeric: number; movementDir?: number; movementSpeed?: number;
   lastUpdate?: string; publicAdvisory?: Adv; trackCone?: Adv; forecastTrack?: Adv; forecastGraphics?: Adv;
-  windWatchesWarnings?: Adv; bestTrackGIS?: Adv;
+  windWatchesWarnings?: Adv; bestTrackGIS?: Adv; forecastAdvisory?: Adv;
   earliestArrivalTimeTSWindsGIS?: Adv; mostLikelyTimeTSWindsGIS?: Adv;
 }
 

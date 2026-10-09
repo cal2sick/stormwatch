@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { HOST, loadLandmarks, PORT, ROOT } from "./config.js";
 import { cleanQuery, geocode, nearbyOutages, placeWeather, validLatLon } from "./sources/place.js";
+import { getTimelines, listAdvisories, loadAdvisory } from "./advisories.js";
 import { bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
@@ -17,6 +18,16 @@ app.get("/api/snapshot", async () => getSnapshot());
 app.get("/api/gis", async () => getGis());
 /** Active watch / warning shapes (GeoJSON geometry + verbatim NWS text). Re-fetch when snapshot.hazardsVersion changes. */
 app.get("/api/hazards", async () => getHazards());
+
+/** Unified storm timelines (best track + latest official forecast + advisory list), keyed by storm id. */
+app.get("/api/timeline", async () => getTimelines());
+/** One stored advisory snapshot (immutable), for the advisory selector. */
+app.get("/api/advisory/:storm/:adv", async (req, reply) => {
+  const { storm, adv } = req.params as { storm: string; adv: string };
+  const r = /^[a-z]{2}\d{6}$/i.test(storm) ? loadAdvisory(storm, adv) : null;
+  return r ?? reply.code(404).send({ error: "advisory not stored" });
+});
+app.get("/api/advisories/:storm", async (req) => ({ advisories: /^[a-z]{2}\d{6}$/i.test((req.params as any).storm) ? listAdvisories((req.params as any).storm) : [] }));
 
 /** Public map places from config/landmarks.json (re-read on each request so edits show after a reload). */
 app.get("/api/landmarks", async () => ({ landmarks: loadLandmarks() }));

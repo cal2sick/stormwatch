@@ -5,6 +5,7 @@ import { readCache, writeCache } from "./cache.js";
 import { HttpError } from "./http.js";
 import { fetchNhc, NHC_URL, type RawStorm } from "./sources/nhc.js";
 import { buildStormGis } from "./sources/nhcGis.js";
+import { dropTimelines, updateTimeline } from "./advisories.js";
 import { fetchForecast, fetchNwsAlerts, nwsAlertsUrl, nwsPointsUrl } from "./sources/nws.js";
 import { fetchRadar, RAINVIEWER_URL } from "./sources/radar.js";
 import { fetchUsgs, usgsUrl } from "./sources/usgs.js";
@@ -170,6 +171,21 @@ const jobs: Job[] = [
     },
   },
   {
+    // Unified UTC timeline: ATCF b-deck (best track), TCM forecast/advisory text (taus + wind radii), a-deck OFCL backfill.
+    key: "timeline", source: "NHC ATCF best track + forecast/advisory (TCM)", url: () => "https://ftp.nhc.noaa.gov/atcf/btk/",
+    run: async () => {
+      const errs: string[] = [];
+      let latest: string | null = null;
+      for (const s of rawStorms) {
+        try { const t = await updateTimeline(s); const iss = t.latest?.issuedUTC ?? null; if (iss && (!latest || iss > latest)) latest = iss; }
+        catch (e) { errs.push(`${s.id}: ${(e as Error).message}`); }
+      }
+      dropTimelines(rawStorms.map((s) => s.id.toLowerCase()));
+      if (errs.length && errs.length === rawStorms.length) throw new Error(errs.join("; "));
+      return latest;
+    },
+  },
+  {
     key: "nws", source: "NWS alerts (api.weather.gov)", url: () => nwsAlertsUrl(loadHome()),
     run: async () => { const r = await fetchNwsAlerts(loadHome()); snapshot.alerts = r.alerts; return r.sourceTime; }, enabled: needsHome,
   },
@@ -205,7 +221,7 @@ const jobs: Job[] = [
     enabled: () => !!ODIN_FIPS,
   },
 ];
-const POLL_KEY: Record<string, string> = { nhcgis: "nhc" };
+const POLL_KEY: Record<string, string> = { nhcgis: "nhc", timeline: "nhc" };
 
 let retryAfter = new Map<string, number>();
 export async function runJob(job: Job): Promise<boolean> {
@@ -230,7 +246,7 @@ export async function runJob(job: Job): Promise<boolean> {
 /** Each job polls on its own interval, with exponential backoff on failure (max 30 min) and Retry-After honored. */
 export function startPolling() {
   // NHC first, then its GIS (needs the raw storm list), then everything else staggered a little.
-  const order = ["nhc", "nhcgis", "nws", "hazards", "forecast", "radar", "usgs", "ndbc", "power", "odin"];
+  const order = ["nhc", "nhcgis", "timeline", "nws", "hazards", "forecast", "radar", "usgs", "ndbc", "power", "odin"];
   order.forEach((key, i) => {
     const job = jobs.find((j) => j.key === key)!;
     if (job.enabled && !job.enabled()) return; // feature off (no location set, or optional plugin not configured)
@@ -244,7 +260,7 @@ export function startPolling() {
       if (ra) delay = Math.max(delay, ra * 1000);
       setTimeout(tick, delay);
     };
-    setTimeout(tick, key === "nhcgis" ? 4000 : i * 700);
+    setTimeout(tick, key === "nhcgis" ? 4000 : key === "timeline" ? 6000 : i * 700);
   });
   // Re-evaluate staleness / hysteresis every 30 s even if no feed returns.
   setInterval(rebuild, 30_000);
