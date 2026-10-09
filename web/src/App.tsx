@@ -31,6 +31,7 @@ import { threatColor } from "./format";
 import { stormLabel } from "./map/sliderView";
 import { useSelectedPlace } from "./useSelectedPlace";
 import LocationSearch, { EvacZone, OutagesNearby } from "./hud/LocationSearch";
+import LocalFeed, { useFeedPoint } from "./hud/LocalFeed";
 
 function usePref<T>(key: string, init: T) {
   const [v, setV] = useState<T>(() => { try { const s = localStorage.getItem("stormwatch:" + key); return s ? { ...init, ...JSON.parse(s) } : init; } catch { return init; } });
@@ -57,6 +58,7 @@ export default function App() {
   const readSnap = snap && place ? { ...snap, home: { name: place.name.split(",")[0], lat: place.lat, lon: place.lon, configured: true },
     forecast: placeWx?.forecast ?? null, alerts: placeWx?.alerts ?? [] } : snap;
   const hazardTime = tm?.time ?? now;
+  const feedPoint = useFeedPoint(place, snap);
   const shownLayers = effectiveLayers(layers, prefs.mode);
 
   // Selected storm: the user's pick if still active, else the nearest (never chosen by name).
@@ -117,6 +119,9 @@ export default function App() {
           <Panel title="Where will the storm be? Pick a time" feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine"
             right={<button className="btn" onClick={() => setMore((v) => !v)}>{more ? "Show less" : "Show more panels"}</button>}>
             <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} jump={jump} />
+          </Panel>
+          <Panel title={`Latest for ${feedPoint?.name ?? "your area"}`} source="NWS alerts, statements, observations and storm reports; NHC; utility outage feed" time={null} area="localfeed" className="lf-panel">
+            <LocalFeed point={feedPoint} snap={snap} storm={storm} now={now} />
           </Panel>
           <Panel title="Look up a place" source="US Census Geocoder, OpenStreetMap Nominatim fallback" time={null} area="place">
             <LocationSearch place={place} onPick={setPlace} />

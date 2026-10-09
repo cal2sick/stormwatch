@@ -292,3 +292,14 @@ body { font-size: 14px; }
 .tm-range::-moz-range-thumb { width: 16px; height: 22px; background: #fff; border: 2px solid #070909; cursor: pointer; }
 .tm-scale .past { color: #91a7ff; } .tm-scale .now { color: #ff8a80; font-weight: 700; } .tm-scale .fc { color: #fab005; }
 .tm-pastb { background: #364fc7; color: #fff; padding: 0 6px; font-weight: 700; } .tm-fcb { color: #1a1300; background: #fab005; padding: 0 6px; font-weight: 700; }
+/* v0.5: Latest for <place> */
+.lf-list { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; }
+.lf-item { border-left: 3px solid var(--line2); padding: 5px 8px; margin-bottom: 6px; background: #0b0f0e; }
+.lf-item.k-alert { border-left-color: #e03131; } .lf-item.k-statement { border-left-color: #fab005; } .lf-item.k-report { border-left-color: #f76707; }
+.lf-item.k-observation { border-left-color: #4dabf7; } .lf-item.k-storm { border-left-color: #ff5a4f; } .lf-item.k-power { border-left-color: #be4bdb; }
+.lf-item.new { background: #2b2205; animation: lfnew 2s ease-out 1; }
+@keyframes lfnew { from { background: #5c4400; } }
+.lf-meta { display: flex; gap: 8px; font-size: 11px; color: #9aa59f; align-items: center; }
+.lf-kind { font-weight: 700; letter-spacing: 1px; color: #cfd8d2; }
+.lf-new { background: #fab005; color: #1a1300; padding: 0 5px; font-size: 10px; }
+.lf-title { font-weight: 700; margin: 2px 0; } .lf-text { font-size: 12px; color: #cfd8d2; } .lf-src { font-size: 10px; color: #7d8a83; margin-top: 2px; }

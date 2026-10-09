@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.0 (2026-10-09, branch `preview`)
+
+Radar fix, live vs forecast made obvious, forecast radar, and a local updates feed.
+
+- **Radar fix.** Moving the time slider 10 to 30 minutes from now used to snap back to "now" (the slider pulled anything within 40 minutes to live), and any future time showed no radar at all, so the map looked blank or stuck. Frames were also switched before their tiles had loaded. Now the slider moves in 5-minute steps near now, every past time shows the matching 5-minute NEXRAD scan, and a new radar frame only fades in once it has loaded (the previous one stays on screen until then). The map always says which radar time it shows, with a LIVE / PAST / FORECAST badge and a loading note.
+- **Radar: last 2 hours** play/pause loop (and "Play forecast radar" in forecast mode).
+- **Live now | Past | Next 3 hours (forecast)** buttons at the top of the map, with quick steps (-2 h to -10 min, +30 to +180 min). Forecast times get a striped overlay and a "FORECAST, not observed" label. The slider track is colored: blue = past, red tick = now, amber stripes = forecast.
+- **Forecast radar, 0 to 3 hours:** NOAA HRRR model simulated radar (Iowa Environmental Mesonet tiles), with the model run time and lead time shown. It is a computer model, not observed radar: storm cells and the hurricane's own center can be in different places than reality, and the newest model run available is usually 1 to 3 hours old.
+- **Latest for <your place>** sidebar feed, newest first, refreshes every 2 minutes with a NEW highlight: NWS alerts for the point (new and updated), the local NWS office's Hurricane Local Statement, short-term forecast and special weather statements, the nearest NWS observation (wind, gusts, pressure trend), nearby NWS local storm reports, the latest National Hurricane Center advisory, and local power outage count changes. Defaults to the place you looked up, then your .env home, then the first city in config/landmarks.json.
+- **Fix:** the server now reads `.env` from the repo root (it was only reading `server/.env`, so the home location could be ignored).
+- `npm run test:live -w server` checks one real past-radar tile and one forecast tile load as PNGs.
+
 ## v0.4.0 (2026-10-09, branch `preview`)
 
 ### Storm data anchored to the National Hurricane Center, on one UTC timeline

@@ -9,6 +9,7 @@ import { evacZone } from "./sources/evac.js";
 import { cleanQuery, geocode, nearbyOutages, placeWeather, validLatLon } from "./sources/place.js";
 import { getTimelines, listAdvisories, loadAdvisory } from "./advisories.js";
 import { threatForPlace, bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
+import { localFeed } from "./sources/localFeed.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
 await app.register(cors, { origin: true });
@@ -50,6 +51,11 @@ app.get("/api/evac", quiet, async (req, reply) => {
   const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);
   if (!p) return reply.code(400).send({ error: "bad lat/lon" });
   try { return await evacZone(p); } catch { return reply.code(502).send({ error: "The Florida evacuation zone map is not reachable right now. Check your county emergency management website." }); }
+});
+app.get("/api/localfeed", quiet, async (req, reply) => {
+  const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);
+  if (!p) return reply.code(400).send({ error: "bad lat/lon" });
+  try { return await localFeed(p); } catch { return reply.code(502).send({ error: "National Weather Service updates are not reachable right now." }); }
 });
 app.get("/api/outages", quiet, async (req, reply) => {
   const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);
