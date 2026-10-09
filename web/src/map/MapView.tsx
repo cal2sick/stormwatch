@@ -106,6 +106,9 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
         // GOES-19 (GOES-East) clean infrared, time-matched to the slider (NASA GIBS, keyless).
         m.addSource("goes", { type: "raster", tileSize: 256, maxzoom: 6, tiles: [GOES_URL(goesTimeAt(Date.now(), Date.now()).time)], attribution: "GOES-19 imagery: NOAA / NASA GIBS" });
         m.addLayer({ id: "goes", type: "raster", source: "goes", layout: { visibility: "none" }, paint: { "raster-opacity": 0.7, "raster-fade-duration": 0 } });
+        // v0.7 rain so far: NOAA MRMS 24-hour observed rain (IEM tiles, refreshed by IEM hourly).
+        m.addSource("rain24", { type: "raster", tileSize: 256, maxzoom: 9, tiles: [`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/q2-p24h/{z}/{x}/{y}.png?h=${Math.floor(Date.now() / 3.6e6)}`], attribution: "Rain totals: NOAA MRMS via Iowa Environmental Mesonet" });
+        m.addLayer({ id: "rain24", type: "raster", source: "rain24", layout: { visibility: "none" }, paint: { "raster-opacity": 0.72, "raster-fade-duration": 200 } });
         m.addSource("graticule", { type: "geojson", data: graticule() });
         m.addLayer({ id: "grat-line", type: "line", source: "graticule", filter: ["==", ["geometry-type"], "LineString"],
           paint: { "line-color": "#7fae8c", "line-opacity": ["case", ["get", "major"], 0.22, 0.09], "line-width": 0.6 } });
@@ -396,6 +399,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
     vis("landmarks-dot", layers.landmarks); vis("landmarks-label", layers.landmarks);
     vis("nightlights", layers.nightlights && !lowBandwidth);
     vis("goes", layers.satellite && !lowBandwidth);
+    vis("rain24", !!layers.rain && !lowBandwidth);
     baseLayers.current.forEach((id) => { if (id !== "bg" && !/background/.test(id)) vis(id, !lowBandwidth); });
   }, [ready, layers, lowBandwidth]);
 
@@ -549,6 +553,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
         {layers.cameras && (snap?.cameras?.length ?? 0) > 0 && <div className={`stale-${st("cameras")}`}>Live cameras (white dots, click for the latest picture): USGS river and coast cameras{snap?.cameras?.some((c) => c.source === "Windy Webcams") ? " + Windy Webcams" : ""} · {fmtET(f.cameras?.sourceTime)}</div>}
         {evacZones && evacZones.features.length > 0 && <div>Evacuation zones for the place you looked up (Florida Division of Emergency Management): <span style={{ color: "#e03131" }}>A</span> leaves first, then <span style={{ color: "#f76707" }}>B</span>, <span style={{ color: "#fab005" }}>C</span>, <span style={{ color: "#74b816" }}>D</span>, <span style={{ color: "#1c7ed6" }}>E</span>. Your county issues the orders.</div>}
         {layers.satellite && <div>Satellite: GOES-19 infrared (cloud tops; brighter = colder, stronger storms) at {fmtET(goes.time)}{goes.clamped ? " (latest available, images arrive about 30 minutes late; not a forecast)" : ""} · NOAA / NASA GIBS</div>}
+        {layers.rain && <div className="rain-key">Rain in the last 24 hours (NOAA MRMS radar + gauges, observed) · Iowa Environmental Mesonet<div className="rain-ramp"><i style={{ background: "#00fe12" }} />0.5 in<i style={{ background: "#fefe00" }} />1.5<i style={{ background: "#fe9000" }} />2.5<i style={{ background: "#fe0000" }} />4<i style={{ background: "#fe00fe" }} />8+</div></div>}
         {layers.nightlights && <div>NASA night lights satellite ({yesterdayUtc()}, clouds block it; post-storm use)</div>}
       </div>}
       {tap && <TapCard point={tap} time={sliderT} onClose={() => setTap(null)}

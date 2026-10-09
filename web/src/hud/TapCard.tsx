@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { bearingDeg, distanceMi } from "../geo";
 import { fmtET } from "../time";
+import RainSoFar from "./RainSoFar";
 
 // v0.6.1 tap-on-map area card. Every tap fetches /api/point for THAT exact point (debounced, in-flight request
 // cancelled on a new tap, cached per 0.01 deg + hour). Every number shows its source and time; missing data says so.
@@ -72,6 +73,7 @@ export default function TapCard({ point, time, storm, onClose }: {
         <div><span>{storm ? `To ${storm.name}` : "Storm"}</span><b data-testid="tap-dist">{dist != null ? `${dist}` : "—"}<small>{dist != null ? ` mi ${dir}` : ""}</small></b></div>
       </div>
       {d && (d.wind.value == null && d.wind.note) && <p className="tm-text tc-note">{d.wind.note}</p>}
+      <RainSoFar lat={point.lat} lon={point.lon} compact />
       <div className="tc-alerts" data-testid="tap-alerts">
         {!d ? null : alerts == null ? <p className="tm-text">Alerts: unavailable ({d.alerts.note})</p>
           : alerts.length === 0 ? <p className="tc-ok">No NWS alerts in effect here at this time.</p>

@@ -103,3 +103,6 @@ NHC wind speed probabilities, storm surge (P-Surge), WPC rainfall, model tracks 
 
 ## Radar value under a tap (v0.7)
 - **Iowa Environmental Mesonet NEXRAD n0q composite WMS** (`/cgi-bin/wms/nexrad/n0q-t.cgi`, free, keyless, same scans as the radar layer). One 5x5-pixel PNG per tapped point and scan, cached 10 minutes. Colors are mapped back to dBZ with IEM's published n0q color table (https://mesonet.agron.iastate.edu/GIS/rasters.php?rid=2), stored in `config/n0q-colors.json`. Words for dBZ bands are typical meanings, not measured rain rates.
+
+## Rain so far (v0.7)
+- **NOAA MRMS precipitation via Iowa Environmental Mesonet** (free, keyless). Map layer: IEM tile cache `q2-p24h` (24-hour total). Point readouts: IEM WMS `/cgi-bin/wms/us/mrms.cgi` layers `mrms_p1h`, `mrms_p24h`, `mrms_p72h` (5x5 px around the point, cached 10 minutes per 0.01 deg) mapped back to mm with IEM's MRMS color table (https://mesonet.agron.iastate.edu/GIS/rasters.php?rid=6, stored in `config/mrms-precip-colors.json`); valid times from `/data/gis/images/4326/mrms/<product>.json`. Observed, not forecast. No 6-hour product exists there.

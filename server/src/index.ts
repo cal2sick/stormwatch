@@ -13,6 +13,7 @@ import { threatForPlace, bus, getGis, getHazards, getSnapshot, startPolling } fr
 import { localFeed } from "./sources/localFeed.js";
 import { pointCard } from "./sources/pointCard.js";
 import { radarPoint, scanFor } from "./sources/radarPoint.js";
+import { rainTotals } from "./sources/rainTotals.js";
 import { radarMotion, stormMotion, type RadarMotion } from "./sources/radarMotion.js";
 import { getOutageAreas, startOutageHistory } from "./sources/outageAreas.js";
 
@@ -90,6 +91,12 @@ app.get("/api/point", quiet, async (req, reply) => {
     return radarPoint(la, lo, scan);
   };
   try { return await pointCard(p.lat, p.lon, t, undefined, undefined, radarFn); } catch { return reply.code(502).send({ error: "Data for this point is not available right now." }); }
+});
+/** v0.7 rain so far at one point (MRMS 1 h / 24 h / 72 h). */
+app.get("/api/rain", quiet, async (req, reply) => {
+  const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);
+  if (!p) return reply.code(400).send({ error: "bad lat/lon" });
+  try { return await rainTotals(p.lat, p.lon); } catch { return reply.code(502).send({ error: "Rain totals are not available right now." }); }
 });
 app.get("/api/place", quiet, async (req, reply) => {
   const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);

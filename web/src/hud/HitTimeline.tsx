@@ -1,13 +1,15 @@
 import { useMemo } from "react";
 import type { HourlyPoint, NwsAlert } from "../types";
 import { hitTimeline, windColor } from "../hitTimeline";
+import RainSoFar from "./RainSoFar";
 
 const hr = (t: number) => new Date(t).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric" }).replace(" ", "").toLowerCase();
 const day = (t: number) => new Date(t).toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "short" });
 const when = (t: number) => `${day(t)} ${hr(t)}`;
 
 /** v0.7 hour-by-hour strip for home: gust bars colored by impact, rain chance, alert color ticks; worst hours glow. Tap an hour to move the map there. */
-export default function HitTimeline({ hourly, alerts, now, place, onPick, selected }: {
+export default function HitTimeline({ hourly, alerts, now, place, onPick, selected, point }: {
+  point?: { lat: number; lon: number } | null;
   hourly: HourlyPoint[]; alerts: NwsAlert[]; now: number; place: string; onPick: (t: number) => void; selected: number | null;
 }) {
   const { rows, summary } = useMemo(() => hitTimeline(hourly, alerts, now), [hourly, alerts, Math.floor(now / 600_000)]);
@@ -36,6 +38,7 @@ export default function HitTimeline({ hourly, alerts, now, place, onPick, select
           </button>;
         })}
       </div>
+      {point && <RainSoFar lat={point.lat} lon={point.lon} />}
       <div className="hit-key"><span>Bars: gusts (mph)</span><span>%: rain chance</span><span>Dots: alerts in effect</span></div>
     </div>
   );

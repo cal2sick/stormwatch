@@ -151,7 +151,7 @@ export default function App() {
               onSet={(p) => { setBrowserHome(p); setPickingHome(false); }} />
           </Panel>
           {readSnap?.home.configured && <Panel title={`When does it hit ${readSnap.home.name.split(",")[0]}?`} feed={readSnap === snap ? snap?.feeds.forecast : undefined} source="NWS hourly forecast + NWS alerts for this place" time={readSnap.forecast?.updateTime ?? null} area="hit">
-            <HitTimeline hourly={readSnap.forecast?.hourly ?? []} alerts={readSnap.alerts ?? []} now={now} place={readSnap.home.name.split(",")[0]}
+            <HitTimeline point={{ lat: readSnap.home.lat, lon: readSnap.home.lon }} hourly={readSnap.forecast?.hourly ?? []} alerts={readSnap.alerts ?? []} now={now} place={readSnap.home.name.split(",")[0]}
               selected={tm && !tm.live ? tm.time : null} onPick={(t) => setJump((j) => ({ t: t + 30 * 60_000 > now && t <= now ? null : t, seq: j.seq + 1 }))} />
           </Panel>}
           <Panel title={storm ? `${storm.name} at the selected time` : "Storm at the selected time"} feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine">
