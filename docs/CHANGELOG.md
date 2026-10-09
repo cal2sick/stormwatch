@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.4.0 (2026-10-09, branch `preview`)
+
+### Storm data anchored to the National Hurricane Center, on one UTC timeline
+- New ingest: ATCF **b-deck best track** (past positions with 34/50/64-kt wind radii), the **Forecast/Advisory text (TCM)** for official forecast hours, intensity and wind radii, and **a-deck OFCL** to backfill older official forecasts. `/api/timeline`, `/api/advisories/:storm`, `/api/advisory/:storm/:adv`.
+- **Immutable per-advisory snapshots** in `data/advisories/` (write once). Full vs intermediate advisories are detected (`12` vs `12A`); an intermediate advisory updates the position and keeps the last full forecast.
+
+### Time slider rewrite
+- Slider value is a UTC timestamp over the track's valid times (past capped at 72 h, forecast to the last NHC point). Great-circle position, linear intensity and wind radii between fixes. Replay tests on Hurricane Idalia (2023) archive data check the slider hits every best-track fix within 0.01°.
+- **Wind field on the map** at the slider time: tropical-storm, 58 mph and hurricane-force wind areas by quadrant.
+- **Time-sliced cone circle** from the NHC 2026 radii table, by forecast hour. No cone in the past.
+- **Advisory selector** to compare an older official forecast with the real path. Smooth Play (requestAnimationFrame). ET with a note that the western Panhandle is on Central time.
+
+### Radar, satellite, observations
+- Radar now defaults to **NOAA NEXRAD (n0q) via Iowa Environmental Mesonet**. Past slider times beyond the loop show the archived scan for that exact time (up to 7 days). RainViewer is only a backup.
+- **GOES-19 infrared satellite** layer, time-matched to the slider.
+- **Coastal water levels** (NOAA tide gauges: Apalachicola, Cedar Key, Panama City, Panama City Beach by default) with "vs normal high tide" and "vs predicted tide" (a surge-like estimate), on the map and in a panel.
+- **Right now at the nearest weather station** to your location (NWS observation).
+
+### Places, evacuation zones, cameras
+- **Threat level follows the place you look up** (its own alerts, distance and warning polygons).
+- **"Am I in an evacuation zone?"** for a looked-up place in Florida (FDEM Know Your Zone), with the county's zones drawn on the map.
+- **Live cameras** layer: USGS river and coast cameras near the storm or you, click for the latest picture. Windy Webcams only with your own key in `.env`.
+- Map: the layer buttons and the "Map shows" time no longer overlap; the map key is collapsible and stays clear of the radar note.
+
 ## v0.3.0 (2026-10-09, in progress)
 
 ### Part 1: map follows the time slider (hotfix)

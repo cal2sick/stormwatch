@@ -158,6 +158,7 @@ export interface Snapshot {
   buoys: Buoy[];
   tides: TideStation[];       // NOAA CO-OPS water levels (config/thresholds.json coopsStations)
   localObs: LocalObs | null;  // nearest NWS station to home
+  cameras: Camera[];          // USGS HIVIS (+ optional Windy with your own key) near the storm / home
   radar: RadarFrames | null;
   power: Power;
   threat: { level: ThreatLevel; reasons: string[]; computedLevel?: ThreatLevel; holdUntil?: string | null };
@@ -227,3 +228,6 @@ export interface LocalObs {
   stationId: string; stationName: string; time: string | null; text: string | null;
   tempF: number | null; windMph: number | null; gustMph: number | null; windDirDeg: number | null; pressureMb: number | null; rainLastHourIn: number | null; url: string;
 }
+
+/** A live camera still image near the storm or home. */
+export interface Camera { id: string; name: string; lat: number; lon: number; source: string; time: string | null; imageUrl: string; thumbUrl: string | null; pageUrl: string }

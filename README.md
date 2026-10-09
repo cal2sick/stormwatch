@@ -43,9 +43,10 @@ Restart with `npm start`. `.env` is git-ignored, so your location and contact ne
 
 ## What it does
 
-- **Time slider:** opens on live ("Now"). Drag left to see where the storm has been (NHC past track, up to 48 h), drag right to see where the NHC forecast puts it, through tomorrow night. Snaps to 15 minutes and to every NHC forecast hour. The storm on the map moves with the slider, with its path, a typical-error ring and the selected time shown in large text.
+- **Time slider on one UTC timeline:** opens on live ("Now"). Drag left for where the storm has been (NHC best track, up to 72 h), drag right through the whole NHC forecast. Snaps to 15 minutes and to every forecast hour; Play animates smoothly. The storm on the map moves with the slider, with its path, the tropical-storm / 58 mph / hurricane-force wind areas (NHC wind radii) and a time-sliced cone circle (NHC 2026 radii). Pick an older advisory to compare forecasts. Times are ET; the western Panhandle (west of the Apalachicola River) is on Central time.
 - **For the selected time:** storm position, top wind and category, motion, distance from you, wind and gusts at your location (NWS hourly), which official alerts are in effect, and plain-English guidance per 6-hour block.
-- **Map layers:** NHC cone, forecast and past track, coastal watches/warnings, tropical-storm wind arrival lines, radar loop, river gauges, buoys, optional outage plugins.
+- **Map layers:** NHC cone, forecast and past track, coastal watches/warnings, tropical-storm wind arrival lines, NEXRAD radar (past slider times show the matching archived scan), GOES-19 infrared satellite, river gauges, buoys, coastal tide gauges with a surge-like readout, live USGS cameras, tornado and flash flood warnings, optional outage plugins.
+- **Look up a place:** pin, local alerts, winds, threat level for that place, nearby power outages, and (in Florida) "Am I in an evacuation zone?" with the county's zones on the map.
 - **Threat level** (green / yellow / orange / red) from rules in `config/thresholds.json`, with every reason shown.
 - Every panel shows its source and the source's own timestamp. Stale data turns amber, then red. Distances and times are labeled estimates. Official alert text is shown verbatim.
 
@@ -85,4 +86,8 @@ The server only listens on `localhost`. To give a friend a temporary link while 
 
 ## License
 
-[MIT](LICENSE). Data belongs to its providers (NOAA/NHC/NWS, USGS, NDBC, RainViewer, OpenStreetMap contributors and others); follow their terms and credit them.
+[MIT](LICENSE). Data belongs to its providers; follow their terms and credit them.
+
+## Data credits
+
+NOAA National Hurricane Center (CurrentStorms.json, ATCF decks, forecast/advisory text, GIS), National Weather Service (api.weather.gov), Storm Prediction Center, NDBC buoys, CO-OPS Tides and Currents, GOES-19 imagery via NASA GIBS, NEXRAD radar via the Iowa Environmental Mesonet (Iowa State University), USGS (water data and HIVIS cameras), Florida Division of Emergency Management (evacuation zones), US Census Geocoder, OpenStreetMap contributors and OpenFreeMap, ORNL ODIN, and RainViewer (radar backup). See [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md).

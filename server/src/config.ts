@@ -57,6 +57,8 @@ export function loadLandmarks(): Landmark[] {
 
 export const USER_AGENT = process.env.USER_AGENT || "Stormwatch/0.2 (self-hosted; set USER_AGENT in .env)";
 export const PORT = Number(process.env.PORT || 8787);
+/** Optional: your own Windy Webcams API key (free tier). Never commit it; .env only. */
+export const WINDY_API_KEY = (process.env.WINDY_API_KEY ?? "").trim();
 export const HOST = process.env.HOST || "localhost"; // localhost only (no LAN access)
 
 // Optional plugins (all off by default). See docs/DATA-SOURCES.md.

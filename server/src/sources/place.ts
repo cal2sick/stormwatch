@@ -8,7 +8,7 @@ import { distanceMi } from "../geo.js";
 import type { Forecast, NwsAlert, Outage } from "../types.js";
 
 const UA = { "User-Agent": USER_AGENT, Accept: "application/json" };
-async function getJsonNoCache<T>(url: string, accept = "application/json", timeoutMs = 15_000): Promise<T> {
+export async function getJsonNoCache<T>(url: string, accept = "application/json", timeoutMs = 15_000): Promise<T> {
   const r = await fetch(url, { headers: { ...UA, Accept: accept }, signal: AbortSignal.timeout(timeoutMs) });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return (await r.json()) as T;

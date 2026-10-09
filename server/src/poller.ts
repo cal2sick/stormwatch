@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
-import { loadHome, loadThresholds, ODIN_FIPS, OUTAGE_ARCGIS_NAME, OUTAGE_ARCGIS_URL, type Home } from "./config.js";
+import { WINDY_API_KEY, loadHome, loadThresholds, ODIN_FIPS, OUTAGE_ARCGIS_NAME, OUTAGE_ARCGIS_URL, type Home } from "./config.js";
 import { readCache, writeCache } from "./cache.js";
 import { HttpError } from "./http.js";
 import { fetchNhc, NHC_URL, type RawStorm } from "./sources/nhc.js";
@@ -12,6 +12,7 @@ import { fetchUsgs, usgsUrl } from "./sources/usgs.js";
 import { fetchNdbc, NDBC_STATIONS_URL } from "./sources/ndbc.js";
 import { COOPS_URL, fetchCoops } from "./sources/coops.js";
 import { fetchLocalObs, pointsUrl } from "./sources/localObs.js";
+import { fetchCameras, HIVIS_URL } from "./sources/cameras.js";
 import { fetchArcgisOutages, fetchOdin, ODIN_URL, POWER_LINKS } from "./sources/power.js";
 import { applyHysteresis, computeThreat, type HystState } from "./threat.js";
 import { diffEvents, mkEvent } from "./events.js";
@@ -24,7 +25,7 @@ bus.setMaxListeners(100);
 
 const EMPTY: Omit<Snapshot, "home"> = {
   version: "", gisVersion: "", generatedAt: new Date().toISOString(), storms: [], alerts: [], forecast: null,
-  gauges: [], buoys: [], tides: [], localObs: null, radar: null, power: { local: null, odin: null, links: POWER_LINKS }, events: [],
+  gauges: [], buoys: [], tides: [], localObs: null, cameras: [], radar: null, power: { local: null, odin: null, links: POWER_LINKS }, events: [],
   threat: { level: "DATA STALE", reasons: ["No data yet"] }, feeds: {},
   hazards: [], homeHazardIds: [], hazardsVersion: "", hazardNotes: [],
 };
@@ -34,7 +35,7 @@ snapshot.power = { ...EMPTY.power, ...(snapshot.power ?? {}), links: POWER_LINKS
 if (!OUTAGE_ARCGIS_URL) { snapshot.power.local = null; delete snapshot.feeds?.power; }
 if (!ODIN_FIPS) { snapshot.power.odin = null; delete snapshot.feeds?.odin; }
 if (!snapshot.home.configured) { snapshot.alerts = []; snapshot.forecast = null; snapshot.gauges = []; for (const k of ["nws", "forecast", "usgs"]) delete snapshot.feeds?.[k]; }
-snapshot.tides ??= []; snapshot.localObs ??= null;
+snapshot.tides ??= []; snapshot.localObs ??= null; snapshot.cameras ??= [];
 snapshot.hazards ??= []; snapshot.homeHazardIds ??= []; snapshot.hazardsVersion ??= ""; snapshot.hazardNotes ??= [];
 export const getSnapshot = () => snapshot;
 
@@ -232,6 +233,14 @@ const jobs: Job[] = [
     enabled: () => (loadThresholds().coopsStations ?? []).length > 0,
   },
   {
+    key: "cameras", source: `Cameras: USGS HIVIS${WINDY_API_KEY ? " + Windy (your key)" : ""}`, url: () => HIVIS_URL,
+    run: async () => {
+      const h = loadHome(); const s0 = snapshot.storms[0];
+      const centers = [...(s0 ? [{ lat: s0.lat, lon: s0.lon }] : []), ...(h.configured ? [{ lat: h.lat, lon: h.lon }] : [])];
+      const r = await fetchCameras(centers, WINDY_API_KEY); snapshot.cameras = r.cameras; return r.sourceTime;
+    },
+  },
+  {
     key: "obs", source: "Nearest NWS weather station (api.weather.gov)", url: () => pointsUrl(loadHome()),
     run: async () => { const r = await fetchLocalObs(loadHome()); snapshot.localObs = r.obs; return r.sourceTime; }, enabled: needsHome,
   },
@@ -273,7 +282,7 @@ export async function runJob(job: Job): Promise<boolean> {
 /** Each job polls on its own interval, with exponential backoff on failure (max 30 min) and Retry-After honored. */
 export function startPolling() {
   // NHC first, then its GIS (needs the raw storm list), then everything else staggered a little.
-  const order = ["nhc", "nhcgis", "timeline", "nws", "hazards", "forecast", "radar", "usgs", "ndbc", "coops", "obs", "power", "odin"];
+  const order = ["nhc", "nhcgis", "timeline", "nws", "hazards", "forecast", "radar", "usgs", "ndbc", "coops", "obs", "cameras", "power", "odin"];
   order.forEach((key, i) => {
     const job = jobs.find((j) => j.key === key)!;
     if (job.enabled && !job.enabled()) return; // feature off (no location set, or optional plugin not configured)

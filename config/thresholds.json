@@ -51,7 +51,8 @@
     "power": 180,
     "odin": 900,
     "coops": 360,
-    "obs": 600
+    "obs": 600,
+    "cameras": 900
   },
   "inConeYellowMaxMi": 300,
   "coopsStations": [

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import type { EvacInfo } from "../useSelectedPlace";
 import type { NearbyOutages, Place } from "../useSelectedPlace";
 import { fmtET } from "../time";
 
@@ -54,4 +55,18 @@ export function OutagesNearby({ data, err }: { data: NearbyOutages | null; err: 
       <p className="tm-src">Checked {fmtET(data.checked)}. Updates every {Math.round(data.pollSeconds / 60)} minutes while a place is selected. {data.feeds.map((f) => f.credit).filter(Boolean).join(" · ")}</p>
     </div>
   );
+}
+
+/** "Am I in an evacuation zone?" for the selected place (Florida Know Your Zone). */
+export function EvacZone({ data, err }: { data: EvacInfo | null; err: string | null }) {
+  if (err) return <p className="tm-text">{err}</p>;
+  if (!data) return <p className="tm-text">Checking the Florida evacuation zone map…</p>;
+  const links = <p className="tm-src">{data.links.map((l, i) => <span key={l.url}>{i ? " · " : ""}<a href={l.url} target="_blank" rel="noreferrer">{l.name}</a></span>)} · Source: {data.source}</p>;
+  if (!data.covered) return <><p className="tm-text">Evacuation zone lookup covers Florida only. Check your county or parish emergency management website.</p>{links}</>;
+  return <>
+    {data.zone ? <p className="tm-big" data-testid="evac-zone">This place is in <b>Evacuation Zone {data.zone}</b>{data.county ? ` (${data.county} County)` : ""}.</p>
+      : <p className="tm-big" data-testid="evac-zone">This place is <b>not in a mapped Florida evacuation zone</b>{data.county ? ` (${data.county} County)` : ""}.</p>}
+    <p className="tm-text">A zone is a planning area, not an order. Your county announces which zones must evacuate. If your zone is called, leave. {data.zone ? "Zone A floods first." : "You may still need to leave if you live in a mobile home or a flood-prone spot."}</p>
+    {links}
+  </>;
 }

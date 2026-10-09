@@ -8,7 +8,7 @@ A self-hosted, localhost-only live hurricane tracker. A Node server polls free p
 ## Stack
 - Node 20+, TypeScript (strict), npm workspaces: `server/` and `web/`.
 - Server: Fastify 5, `@fastify/websocket`, `@fastify/static`, run with `tsx`. `shpjs` reads NHC shapefiles, `but-unzip` reads KMZ.
-- Web: Vite 5, React 18, MapLibre GL 4 (OpenFreeMap basemap, RainViewer radar tiles).
+- Web: Vite 5, React 18, MapLibre GL 4 (OpenFreeMap basemap, IEM NEXRAD radar tiles, NASA GIBS GOES-19).
 - Tests: Vitest in `server/test/` (they also import pure modules from `web/src/`).
 
 ## Commands
@@ -21,9 +21,10 @@ npm run typecheck    # must pass before every commit
 npm run build        # must pass before every PR
 npm run smoke        # live fetch of every enabled feed (needs internet; not run in CI)
 ```
-Health check: `curl http://localhost:8787/api/health` -> `{"ok":true,...}`. Full state: `/api/snapshot`, geometry: `/api/gis`, watch/warning shapes: `/api/hazards`, live push: `/ws`.
+Health check: `curl http://localhost:8787/api/health` -> `{"ok":true,...}`. Full state: `/api/snapshot`, geometry: `/api/gis`, storm timeline: `/api/timeline`, watch/warning shapes: `/api/hazards`, live push: `/ws`.
 
 ## Layout
+- `server/src/advisories.ts` + `sources/atcf.ts` + `sources/tcm.ts`: the unified UTC storm timeline (best track, official forecast, wind radii) and the write-once advisory store in `data/advisories/`. `web/src/stormTime.ts`: pure slider rules on that timeline (track by valid time, radii, cone circle, slider range). Never index the track by array position or use issue time as valid time.
 - `web/src/map/sliderView.ts`: pure rules for what the map shows at the slider time (radar frame pick, pan rule, storm label). The selected storm has exactly ONE map icon (`.pin-storm-main`), always at the slider-time position.
 - `server/src/sources/place.ts`: location search (`/api/geocode`), per-place NWS (`/api/place`) and nearby outages (`/api/outages`). PRIVACY RULE: these routes run with `logLevel: "warn"`, return generic errors, and never write the place to disk. The browser keeps the place in localStorage (`web/src/useSelectedPlace.ts`).
 - `server/src/config.ts`: env + `config/thresholds.json` + `config/landmarks.json` loading. Location only from `HOME_LAT`/`HOME_LON`.
@@ -42,7 +43,7 @@ Health check: `curl http://localhost:8787/api/health` -> `{"ok":true,...}`. Full
 4. **Official text is verbatim.** Never rewrite or soften NWS/NHC alert text.
 5. **Keep last-known-good data.** A failed fetch marks the feed stale; it never blanks a panel.
 6. **Poll politely.** One server poller for all clients. Use `config/thresholds.json` intervals. Respect ETag/Last-Modified and Retry-After; exponential backoff to 30 min. All requests go through `http.ts`.
-7. **Free and open only.** No API keys, no paid services, no scraping behind logins, CAPTCHAs or embedded keys.
+7. **Free and open only.** No API keys in the repo, no paid services, no scraping behind logins, CAPTCHAs or embedded keys. An optional source may read the user's own key from `.env` (off by default).
 8. **The safety banner stays** on every layout. Distances and arrival times are labeled estimates.
 9. **Localhost by default.** Don't change the default bind host.
 10. Plain, readable English in the UI: no unexplained abbreviations, units spelled out.

@@ -11,6 +11,7 @@ export interface NearbyOutages {
   county: { name: string; fips: string; rows: { utility: string; customers: number }[]; source: string } | null;
   links: { name: string; url: string }[]; coverage: "point-feed" | "county-only" | "none"; note: string;
 }
+export interface EvacInfo { covered: boolean; zone: string | null; county: string | null; countyZones: GeoJSON.FeatureCollection | null; source: string; checked: string; links: { name: string; url: string }[] }
 const KEY = "stormwatch:place";
 
 export function loadPlace(): Place | null {
@@ -22,9 +23,11 @@ export function useSelectedPlace() {
   const [weather, setWeather] = useState<PlaceWeather | null>(null);
   const [outages, setOutages] = useState<NearbyOutages | null>(null);
   const [outageErr, setOutageErr] = useState<string | null>(null);
+  const [evac, setEvac] = useState<EvacInfo | null>(null);
+  const [evacErr, setEvacErr] = useState<string | null>(null);
   const setPlace = (p: Place | null) => {
     try { if (p) localStorage.setItem(KEY, JSON.stringify(p)); else localStorage.removeItem(KEY); } catch { /* ignore */ }
-    setWeather(null); setOutages(null); setOutageErr(null); setPlaceState(p);
+    setWeather(null); setOutages(null); setOutageErr(null); setEvac(null); setEvacErr(null); setPlaceState(p);
   };
   const q = place ? `lat=${place.lat}&lon=${place.lon}` : null;
   // NWS hourly wind + alerts for the place: on select, then every 10 min (alerts) while selected.
@@ -51,5 +54,13 @@ export function useSelectedPlace() {
     load();
     return () => { stop = true; if (timer) clearTimeout(timer); };
   }, [q]);
-  return { place, setPlace, weather, outages, outageErr };
+  // Evacuation zone (Florida, FDEM): once per selected place.
+  useEffect(() => {
+    if (!q) return;
+    let stop = false;
+    fetch(`/api/evac?${q}`).then(async (r) => { const d = await r.json(); if (stop) return; if (r.ok) setEvac(d); else setEvacErr(d.error ?? "Evacuation zone lookup failed."); })
+      .catch(() => { if (!stop) setEvacErr("Evacuation zone lookup is not reachable right now."); });
+    return () => { stop = true; };
+  }, [q]);
+  return { place, setPlace, weather, outages, outageErr, evac, evacErr };
 }

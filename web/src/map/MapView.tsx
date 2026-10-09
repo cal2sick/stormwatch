@@ -36,7 +36,8 @@ function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); retur
 export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean; radii?: RadiiState }
 export interface Landmark { name: string; lat: number; lon: number; kind: string; source?: string }
 
-export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [] }: {
+export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null }: {
+  evacZones?: GeoJSON.FeatureCollection | null;
   place?: { name: string; lat: number; lon: number } | null; placeOutages?: { lat: number; lon: number; customers: number; cause: string | null; etr: string | null; source: string; distanceMi: number }[];
   ghost?: SliderPos | null; hazards?: Hazard[]; hazardTime: number; mode?: ViewMode; onMode?: (m: ViewMode) => void;
   snap: Snapshot | null; storm: Storm | undefined; gis: StormGis | undefined;
@@ -108,10 +109,16 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
           "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": ["match", ["get", "kind"], "city", 15, 13],
           "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.7, "text-allow-overlap": false, "text-optional": true },
           paint: { "text-color": "#f2e9c9", "text-halo-color": "#070909", "text-halo-width": 2 } });
+        // Florida evacuation zones (FDEM) for the searched place's county. Zone A = first to evacuate.
+        m.addSource("evac", { type: "geojson", data: EMPTY });
+        m.addLayer({ id: "evac-fill", type: "fill", source: "evac", paint: { "fill-color": ["match", ["get", "EZone"], "A", "#e03131", "B", "#f76707", "C", "#fab005", "D", "#74b816", "E", "#1c7ed6", "#7048e8"], "fill-opacity": 0.22 } });
+        m.addLayer({ id: "evac-line", type: "line", source: "evac", paint: { "line-color": "#f2e9c9", "line-width": 0.6, "line-opacity": 0.6 } });
+        m.addLayer({ id: "evac-label", type: "symbol", source: "evac", minzoom: 8, layout: { "text-field": ["concat", "Zone ", ["get", "EZone"]], "text-font": ["Noto Sans Regular"], "text-size": 11 }, paint: { "text-color": "#f2e9c9", "text-halo-color": "#070909", "text-halo-width": 1.5 } });
         m.addSource("place-outages", { type: "geojson", data: EMPTY });
         m.addLayer({ id: "place-outages", type: "circle", source: "place-outages", paint: {
           "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 4, 100, 7, 1000, 12], "circle-color": "#ffb020", "circle-opacity": 0.85, "circle-stroke-color": "#070909", "circle-stroke-width": 1 } });
-        for (const id of ["outages", "gauges", "buoys", "tides"]) m.addSource(id, { type: "geojson", data: EMPTY });
+        for (const id of ["outages", "gauges", "buoys", "tides", "cameras"]) m.addSource(id, { type: "geojson", data: EMPTY });
+        m.addLayer({ id: "cameras", type: "circle", source: "cameras", paint: { "circle-radius": 5, "circle-color": "#f2e9c9", "circle-stroke-color": "#3b5bdb", "circle-stroke-width": 2 } });
         m.addLayer({ id: "tides", type: "circle", source: "tides", paint: { "circle-radius": 5, "circle-color": ["step", ["get", "above"], "#4dabf7", 1, "#f08c00", 2, "#e03131"], "circle-stroke-color": "#070909", "circle-stroke-width": 1.5 } });
         m.addLayer({ id: "gauges", type: "circle", source: "gauges", paint: {
           "circle-radius": 3.5, "circle-stroke-width": 1, "circle-stroke-color": "#070909",
@@ -120,11 +127,11 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
           "circle-radius": 3.5, "circle-color": "#070909", "circle-stroke-color": "#c8cfc6", "circle-stroke-width": 1 } });
         m.addLayer({ id: "outages", type: "circle", source: "outages", paint: {
           "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 3, 100, 6, 1000, 10], "circle-color": "#d23c34", "circle-opacity": 0.85, "circle-stroke-color": "#070909", "circle-stroke-width": 1 } });
-        for (const id of ["outages", "gauges", "buoys", "tides", "fcst-pts", "place-outages"]) {
+        for (const id of ["outages", "gauges", "buoys", "tides", "cameras", "fcst-pts", "place-outages"]) {
           m.on("click", id, (e) => {
             const p = e.features?.[0]?.properties as Record<string, any> | undefined;
             if (!p) return;
-            new maplibregl.Popup({ closeButton: false, className: "hud-popup" }).setLngLat(e.lngLat).setHTML(p.popup ?? `<b>${p.etLabel ?? ""}</b>`).addTo(m);
+            new maplibregl.Popup({ closeButton: false, className: "hud-popup", maxWidth: "340px" }).setLngLat(e.lngLat).setHTML(p.popup ?? `<b>${p.etLabel ?? ""}</b>`).addTo(m);
           });
           m.on("mouseenter", id, () => (m.getCanvas().style.cursor = "pointer"));
           m.on("mouseleave", id, () => (m.getCanvas().style.cursor = ""));
@@ -157,6 +164,10 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
       popup: `<b>${g.name}</b><br>Stage ${g.stageFt ?? "—"} ft · ${g.trend} (${g.change3hFt ?? "?"} ft / 3 h)<br>USGS ${g.id} · ${fmtET(g.time)}` }))));
     set("tides", fc((snap.tides ?? []).filter((x) => isFinite(x.lat) && isFinite(x.lon)).map((x) => pt(x.lon, x.lat, { above: x.aboveForecastFt ?? 0,
       popup: `<b>${x.name}</b> (NOAA tide gauge ${x.id})<br>Water ${x.levelFtMhhw} ft vs normal high tide · ${x.aboveForecastFt ?? "—"} ft vs predicted tide<br>${fmtET(x.time)}` }))));
+    const escH = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+    const httpsOnly = (u: string | null) => (u && /^https:\/\//.test(u) ? escH(u) : "");
+    set("cameras", fc((snap.cameras ?? []).map((c) => pt(c.lon, c.lat, {
+      popup: `<b>${escH(c.name)}</b><br><a href="${httpsOnly(c.pageUrl)}" target="_blank" rel="noreferrer"><img src="${httpsOnly(c.imageUrl)}" alt="Latest camera image" style="width:300px;max-width:100%;display:block;margin:4px 0" loading="lazy"></a>Latest image ${fmtET(c.time)} · ${escH(c.source)}` }))));
     set("buoys", fc(snap.buoys.map((b) => pt(b.lon, b.lat, {
       popup: `<b>NDBC ${b.id}</b> ${b.name}<br>Wind ${ktToMph(b.windKt) ?? "—"} mph, gusts ${ktToMph(b.gustKt) ?? "—"} mph · ${b.pressureMb ?? "—"} mb · seas ${b.waveFt ?? "—"} ft<br>${b.distanceToStormMi} mi from storm · ${fmtET(b.time)}` }))));
   }, [ready, snap]);
@@ -243,6 +254,8 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
       popup: `<b>Power outage</b><br>${o.customers} customer${o.customers === 1 ? "" : "s"} out · ${o.distanceMi} miles from the selected place<br>Cause: ${esc(o.cause ?? "unknown")}<br>Estimated fix: ${fmtET(o.etr)}<br><small>${esc(o.source)}</small>` }))));
   }, [ready, placeOutages]);
 
+  useEffect(() => { if (ready && map.current) (map.current.getSource("evac") as GeoJSONSource | undefined)?.setData(evacZones ?? EMPTY); }, [ready, evacZones]);
+
   // Landmarks (public places) from config/landmarks.json.
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   useEffect(() => { fetch("/api/landmarks").then((r) => r.json()).then((d) => setLandmarks(Array.isArray(d.landmarks) ? d.landmarks : [])).catch(() => {}); }, []);
@@ -270,7 +283,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     for (const [k, ids] of Object.entries(STORM_LAYER_IDS)) ids.forEach((id) => vis(id, layers[k as LayerKey]));
     vis("outages", layers.outages); vis("place-outages", layers.outages);
     HAZARD_LAYER_IDS.forEach((id) => vis(id, layers.tornado || layers.flood));
-    vis("gauges", layers.gauges); vis("buoys", layers.buoys); vis("tides", layers.buoys);
+    vis("gauges", layers.gauges); vis("buoys", layers.buoys); vis("tides", layers.buoys); vis("cameras", layers.cameras);
     vis("landmarks-dot", layers.landmarks); vis("landmarks-label", layers.landmarks);
     vis("nightlights", layers.nightlights && !lowBandwidth);
     vis("goes", layers.satellite && !lowBandwidth);
@@ -348,6 +361,8 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
         <div className={`stale-${st("ndbc")}`}>Buoys near the storm (NOAA) · {fmtET(f.ndbc?.sourceTime)}</div>
         {(snap?.tides?.length ?? 0) > 0 && <div className={`stale-${st("coops")}`}>Tide gauges (NOAA CO-OPS), color = water above predicted tide · {fmtET(f.coops?.sourceTime)}</div>}
         <div className="ww-key"><i style={{ background: WW_HEX.HWR }} />Hurricane warning <i style={{ background: WW_HEX.HWA }} />Hurricane watch <i style={{ background: WW_HEX.TWR }} />Tropical storm warning <i style={{ background: WW_HEX.TWA }} />Tropical storm watch</div>
+        {layers.cameras && (snap?.cameras?.length ?? 0) > 0 && <div className={`stale-${st("cameras")}`}>Live cameras (white dots, click for the latest picture): USGS river and coast cameras{snap?.cameras?.some((c) => c.source === "Windy Webcams") ? " + Windy Webcams" : ""} · {fmtET(f.cameras?.sourceTime)}</div>}
+        {evacZones && evacZones.features.length > 0 && <div>Evacuation zones for the place you looked up (Florida Division of Emergency Management): <span style={{ color: "#e03131" }}>A</span> leaves first, then <span style={{ color: "#f76707" }}>B</span>, <span style={{ color: "#fab005" }}>C</span>, <span style={{ color: "#74b816" }}>D</span>, <span style={{ color: "#1c7ed6" }}>E</span>. Your county issues the orders.</div>}
         {layers.satellite && <div>Satellite: GOES-19 infrared (cloud tops; brighter = colder, stronger storms) at {fmtET(goes.time)}{goes.clamped ? " (latest available, images arrive about 30 minutes late; not a forecast)" : ""} · NOAA / NASA GIBS</div>}
         {layers.nightlights && <div>NASA night lights satellite ({yesterdayUtc()}, clouds block it; post-storm use)</div>}
       </details>

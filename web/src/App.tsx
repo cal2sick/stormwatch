@@ -30,7 +30,7 @@ import { useHazards } from "./useHazards";
 import { threatColor } from "./format";
 import { stormLabel } from "./map/sliderView";
 import { useSelectedPlace } from "./useSelectedPlace";
-import LocationSearch, { OutagesNearby } from "./hud/LocationSearch";
+import LocationSearch, { EvacZone, OutagesNearby } from "./hud/LocationSearch";
 
 function usePref<T>(key: string, init: T) {
   const [v, setV] = useState<T>(() => { try { const s = localStorage.getItem("stormwatch:" + key); return s ? { ...init, ...JSON.parse(s) } : init; } catch { return init; } });
@@ -51,7 +51,7 @@ export default function App() {
   const timelines = useTimeline(snap?.gisVersion);
   const [advPick, setAdvPick] = useState<string | null>(null);
   useAlerts(snap, prefs.voice, prefs.notify);
-  const { place, setPlace, weather: placeWx, outages: placeOut, outageErr } = useSelectedPlace();
+  const { place, setPlace, weather: placeWx, outages: placeOut, outageErr, evac, evacErr } = useSelectedPlace();
   // Readouts (distance, wind at the place, alerts) use the searched place when one is selected; else .env home.
   const readSnap = snap && place ? { ...snap, home: { name: place.name.split(",")[0], lat: place.lat, lon: place.lon, configured: true },
     forecast: placeWx?.forecast ?? null, alerts: placeWx?.alerts ?? [] } : snap;
@@ -120,6 +120,9 @@ export default function App() {
           <Panel title="Look up a place" source="US Census Geocoder, OpenStreetMap Nominatim fallback" time={null} area="place">
             <LocationSearch place={place} onPick={setPlace} />
           </Panel>
+          {place && <Panel title={`Evacuation zone for ${place.name.split(",")[0]}`} source="Florida Division of Emergency Management (Know Your Zone)" time={evac?.checked ?? null} area="place-evac">
+            <EvacZone data={evac} err={evacErr} />
+          </Panel>}
           {place && <Panel title={`Power outages near ${place.name.split(",")[0]}`} source="utility outage feeds (config/outage-sources.json), ORNL ODIN" time={placeOut?.checked ?? null} area="place-outages">
             <OutagesNearby data={placeOut} err={outageErr} />
           </Panel>}
@@ -137,7 +140,7 @@ export default function App() {
         <section className="col center">
           <div className="map-frame" data-area="map">
             <MapView snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
-              place={place} placeOutages={placeOut?.outages ?? []}
+              place={place} placeOutages={placeOut?.outages ?? []} evacZones={evac?.countyZones ?? null}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
               ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, radii: tm.radii, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
               onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }} lowBandwidth={prefs.lowBw} />

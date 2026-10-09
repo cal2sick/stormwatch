@@ -47,3 +47,28 @@ describe("NWS station observation", () => {
     expect(o).toMatchObject({ tempF: 77, windMph: 25, gustMph: 40, pressureMb: 1005, rainLastHourIn: 0.5 });
   });
 });
+
+import { inFlorida, pickZone } from "../src/sources/evac";
+describe("FDEM evacuation zone", () => {
+  it("picks the most at-risk zone and tidies the county name", () => {
+    expect(pickZone([{ attributes: { EZone: "B", County_Nam: "FRANKLIN" } }, { attributes: { EZone: "A", County_Nam: "FRANKLIN" } }])).toEqual({ zone: "A", county: "Franklin" });
+    expect(pickZone([])).toEqual({ zone: null, county: null });
+  });
+  it("only queries inside Florida", () => { expect(inFlorida(29.73, -84.98)).toBe(true); expect(inFlorida(30.69, -88.04)).toBe(false); });
+});
+
+import { hivisNear } from "../src/sources/cameras";
+describe("USGS HIVIS cameras", () => {
+  const now = Date.parse("2026-10-09T19:00:00Z");
+  const list = [
+    { camId: "FL_A", camName: "Near", lat: "29.7", lng: "-85.0", newestImageDT: "2026-10-09T18:30:00Z", smallDir: "https://x.example/720/FL_A/", thumbDir: "https://x.example/t/FL_A/" },
+    { camId: "FL_OLD", camName: "Stale", lat: "29.7", lng: "-85.0", newestImageDT: "2026-08-01T00:00:00Z", smallDir: "https://x.example/720/FL_OLD/" },
+    { camId: "IL_FAR", camName: "Far", lat: "39.7", lng: "-89.7", newestImageDT: "2026-10-09T18:30:00Z", smallDir: "https://x.example/720/IL_FAR/" },
+    { camId: "FL_HID", camName: "Hidden", lat: "29.7", lng: "-85.0", hideCam: true, newestImageDT: "2026-10-09T18:30:00Z", smallDir: "https://x.example/720/FL_HID/" },
+  ];
+  it("keeps recent, visible cameras within range, newest image URL", () => {
+    const c = hivisNear(list, [{ lat: 28.7, lon: -87.1 }], 250, 6, now);
+    expect(c.map((x) => x.name)).toEqual(["Near"]);
+    expect(c[0].imageUrl).toBe("https://x.example/720/FL_A/FL_A_newest.jpg");
+  });
+});
