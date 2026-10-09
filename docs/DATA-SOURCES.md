@@ -53,3 +53,10 @@ NHC wind speed probabilities, storm surge (P-Surge), WPC rainfall, model tracks 
 | Tornado / severe thunderstorm watches | NOAA SPC via Iowa Environmental Mesonet | `https://mesonet.agron.iastate.edu/json/spcwatch.py` | 60 s | SPC `ActiveWW.kml` returns 404; NWS watch alerts have no polygon |
 | Tornado warnings, flash flood warnings and watches | NWS alerts API | `https://api.weather.gov/alerts/active?event=Tornado Warning,Flash Flood Warning,Flash Flood Watch` | 60 s | Text kept verbatim; watch areas use `api.weather.gov/zones/...` shapes (cached, max 60 new zones per poll) |
 | Backup warning polygons | Iowa Environmental Mesonet storm-based warnings | `https://mesonet.agron.iastate.edu/geojson/sbw.geojson` | only if NWS fails | No full text; labelled as backup |
+
+## Location search and nearby outages (v0.3.0)
+- **US Census Geocoder** `geocoding.geo.census.gov/geocoder/locations/onelineaddress` (street addresses, US, free, no key) and `geographies/coordinates` (county FIPS for ODIN).
+- **OpenStreetMap Nominatim** `nominatim.openstreetmap.org/search` (cities, ZIPs, places). Usage policy: max 1 request/second, identifying User-Agent (set `USER_AGENT` in `.env`), no autocomplete. Stormwatch enforces all three.
+- **NWS** `api.weather.gov/points` + hourly forecast + `alerts/active?point=` for the selected place.
+- **Outage registry** `config/outage-sources.json`: `arcgis` entries are public ArcGIS outage-point queries (no key) with a bbox; `link` entries are utilities with no free machine feed (link-out only). Never add feeds that need a login, a key copied out of a web page, or a CAPTCHA.
+- **ORNL ODIN** `odin.ornl.gov/odi?format=JSON`: county-level outage counts for utilities that report (cached 10 min).

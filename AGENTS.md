@@ -25,6 +25,7 @@ Health check: `curl http://localhost:8787/api/health` -> `{"ok":true,...}`. Full
 
 ## Layout
 - `web/src/map/sliderView.ts`: pure rules for what the map shows at the slider time (radar frame pick, pan rule, storm label). The selected storm has exactly ONE map icon (`.pin-storm-main`), always at the slider-time position.
+- `server/src/sources/place.ts`: location search (`/api/geocode`), per-place NWS (`/api/place`) and nearby outages (`/api/outages`). PRIVACY RULE: these routes run with `logLevel: "warn"`, return generic errors, and never write the place to disk. The browser keeps the place in localStorage (`web/src/useSelectedPlace.ts`).
 - `server/src/config.ts`: env + `config/thresholds.json` + `config/landmarks.json` loading. Location only from `HOME_LAT`/`HOME_LON`.
 - `server/src/poller.ts`: job list, scheduling, backoff, snapshot rebuild, derived per-storm fields.
 - `server/src/sources/*.ts`: one file per upstream source; each exports a URL builder and a `fetchX()` that returns `{ data, sourceTime }`.

@@ -5,6 +5,7 @@ import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { HOST, loadLandmarks, PORT, ROOT } from "./config.js";
+import { cleanQuery, geocode, nearbyOutages, placeWeather, validLatLon } from "./sources/place.js";
 import { bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
@@ -19,6 +20,25 @@ app.get("/api/hazards", async () => getHazards());
 
 /** Public map places from config/landmarks.json (re-read on each request so edits show after a reload). */
 app.get("/api/landmarks", async () => ({ landmarks: loadLandmarks() }));
+
+// Selected-location routes. PRIVACY: logLevel "warn" = no request log lines (no addresses or coordinates in logs),
+// errors are generic, nothing is written to disk. The browser keeps the selected location in localStorage only.
+const quiet = { logLevel: "warn" as const };
+app.get("/api/geocode", quiet, async (req, reply) => {
+  const q = cleanQuery((req.query as any)?.q);
+  if (!q) return reply.code(400).send({ error: "Type at least 3 characters: an address, a city or a ZIP code." });
+  try { return { results: await geocode(q) }; } catch { return reply.code(502).send({ error: "Location search is not reachable right now. Try again in a minute." }); }
+});
+app.get("/api/place", quiet, async (req, reply) => {
+  const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);
+  if (!p) return reply.code(400).send({ error: "bad lat/lon" });
+  try { return await placeWeather(p); } catch { return reply.code(502).send({ error: "National Weather Service data is not available for this location right now." }); }
+});
+app.get("/api/outages", quiet, async (req, reply) => {
+  const p = validLatLon((req.query as any)?.lat, (req.query as any)?.lon);
+  if (!p) return reply.code(400).send({ error: "bad lat/lon" });
+  try { return await nearbyOutages(p); } catch { return reply.code(502).send({ error: "Outage data is not available right now." }); }
+});
 
 app.register(async (f) => {
   f.get("/ws", { websocket: true }, (socket) => {

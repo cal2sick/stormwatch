@@ -249,3 +249,7 @@ body { font-size: 14px; }
 /* v0.3.0: keep the legend from covering the storm; one storm icon */
 .map-legend { max-width: min(420px, 45%); max-height: 38%; overflow-y: auto; opacity: 0.92; }
 .pin-storm-main { z-index: 5; }
+.loc-form { display: flex; gap: 6px; } .loc-form input { flex: 1; font: inherit; font-size: 15px; padding: 6px 8px; background: #0d1110; color: var(--bright); border: 1px solid var(--line2); }
+.loc-results { list-style: none; padding: 0; margin: 6px 0; } .loc-results .btn { white-space: normal; text-align: left; font-size: 14px; margin: 2px 0; text-transform: none; font-variant: normal; }
+.pin-place svg * { fill: #4fb3ff; stroke: #070909; stroke-width: 1.5; } .pin-place .pin-label { position: absolute; left: 24px; top: 0; color: #9fd4ff; }
+.loc .btn, .outages .btn { font-size: 13px; text-transform: none; font-variant: normal; letter-spacing: 0; }

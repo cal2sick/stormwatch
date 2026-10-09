@@ -1,0 +1,13 @@
+{
+  "_about": "Power outage sources used for the 'Nearby outages' panel around the location you search for. type=arcgis: a utility's PUBLIC ArcGIS outage-points query URL (no key, no login). bbox = [west, south, east, north] the feed covers. type=link: no free machine feed, so the app only links to the utility's own outage map. Never add feeds that need a login, an API key copied from a web page, or a CAPTCHA. Restart after editing. See docs/DATA-SOURCES.md.",
+  "pollSeconds": 180,
+  "radiusMi": 25,
+  "sources": [
+    { "id": "ctu", "type": "arcgis", "name": "City of Tallahassee Utilities", "bbox": [-84.45, 30.33, -84.15, 30.6],
+      "url": "https://tallahassee-ags.esriemcs.com/arcgis/rest/services/TallahasseeOutageMap/MapServer/0/query?where=1%3D1&outFields=status,cause,customers,off,etr,outagetype,region&outSR=4326&f=json",
+      "map": "https://outagemap.talgov.com/", "credit": "Data: City of Tallahassee Utilities" },
+    { "id": "talquin", "type": "link", "name": "Talquin Electric Cooperative", "bbox": [-85.2, 30.0, -83.9, 30.75], "map": "https://my.talquinelectric.com/outages/maps/" },
+    { "id": "duke-fl", "type": "link", "name": "Duke Energy Florida", "bbox": [-85.5, 26.5, -80.5, 31.0], "map": "https://outagemap.duke-energy.com/" },
+    { "id": "fpl", "type": "link", "name": "Florida Power & Light (incl. former Gulf Power)", "bbox": [-87.7, 25.0, -79.9, 31.0], "map": "https://www.fplmaps.com/" }
+  ]
+}

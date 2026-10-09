@@ -26,6 +26,8 @@ import HazardsPanel from "./hud/HazardsPanel";
 import { useHazards } from "./useHazards";
 import { threatColor } from "./format";
 import { stormLabel } from "./map/sliderView";
+import { useSelectedPlace } from "./useSelectedPlace";
+import LocationSearch, { OutagesNearby } from "./hud/LocationSearch";
 
 function usePref<T>(key: string, init: T) {
   const [v, setV] = useState<T>(() => { try { const s = localStorage.getItem("stormwatch:" + key); return s ? { ...init, ...JSON.parse(s) } : init; } catch { return init; } });
@@ -44,6 +46,10 @@ export default function App() {
   const [tm, setTm] = useState<SliderState | null>(null);
   const [more, setMore] = useState(false);
   useAlerts(snap, prefs.voice, prefs.notify);
+  const { place, setPlace, weather: placeWx, outages: placeOut, outageErr } = useSelectedPlace();
+  // Readouts (distance, wind at the place, alerts) use the searched place when one is selected; else .env home.
+  const readSnap = snap && place ? { ...snap, home: { name: place.name.split(",")[0], lat: place.lat, lon: place.lon, configured: true },
+    forecast: placeWx?.forecast ?? null, alerts: placeWx?.alerts ?? [] } : snap;
   const hazardTime = tm?.time ?? now;
   const shownLayers = effectiveLayers(layers, prefs.mode);
 
@@ -99,8 +105,14 @@ export default function App() {
         <aside className="col left">
           <Panel title="Where will the storm be? Pick a time" feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine"
             right={<button className="btn" onClick={() => setMore((v) => !v)}>{more ? "Show less" : "Show more panels"}</button>}>
-            <TimeMachine snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} now={now} onState={setTm} />
+            <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} now={now} onState={setTm} />
           </Panel>
+          <Panel title="Look up a place" source="US Census Geocoder, OpenStreetMap Nominatim fallback" time={null} area="place">
+            <LocationSearch place={place} onPick={setPlace} />
+          </Panel>
+          {place && <Panel title={`Power outages near ${place.name.split(",")[0]}`} source="utility outage feeds (config/outage-sources.json), ORNL ODIN" time={placeOut?.checked ?? null} area="place-outages">
+            <OutagesNearby data={placeOut} err={outageErr} />
+          </Panel>}
           <Panel title="Your threat level and why" source="rules in config/thresholds.json over NWS + NHC" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
             <ThreatLadder snap={view} variant="full" />
           </Panel>
@@ -114,6 +126,7 @@ export default function App() {
         <section className="col center">
           <div className="map-frame" data-area="map">
             <MapView snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
+              place={place} placeOutages={placeOut?.outages ?? []}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
               ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
               onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }} lowBandwidth={prefs.lowBw} />

@@ -106,13 +106,13 @@ export default function TimeMachine({ snap, storm, gis, now, onState }: {
       {st && <>
         <div className="tm-grid">
           <div><small>Storm center</small><b>{fmtLat(st.lat)} {fmtLon(st.lon)}</b></div>
-          {hasHome && <div><small>Distance from home</small><b>{Math.round(st.distanceMi)} miles {st.bearingFromHomeCardinal}</b></div>}
+          {hasHome && <div><small>Distance from {home.name?.split(",")[0] || "home"}</small><b>{Math.round(st.distanceMi)} miles {st.bearingFromHomeCardinal}</b></div>}
           <div><small>Storm's top wind</small><b>{st.windMph ?? "—"} mph</b><em>{st.category}</em></div>
           <div><small>Storm is moving</small><b>{st.headingCardinal} {st.speedMph ? "at " + Math.round(st.speedMph) + " mph" : ""}</b></div>
         </div>
         <p className="tm-text">{hasHome ? describe(st, storm.name, adv, home.name?.split(",")[0] ?? "home") : `${storm.name} center at ${fmtLat(st.lat)} ${fmtLon(st.lon)}, top wind ${st.windMph ?? "?"} mph. Set your location in .env to see distance, winds and alerts for your place.`}</p>
         {hasHome && <><div className="tm-section">
-          <h4>Wind at your home at this time</h4>
+          <h4>Wind at {home.name?.split(",")[0] || "your home"} at this time</h4>
           {homeHour ? <p className="tm-big"><b>{homeHour.windMph ?? "—"} mph</b> steady wind from the {homeHour.windDir ?? "—"}, gusts up to <b>{homeHour.gustMph ?? "—"} mph</b>. {homeHour.shortForecast}{homeHour.pop != null ? `, ${homeHour.pop}% chance of rain` : ""}.</p>
             : <p className="tm-text">Outside the National Weather Service hourly forecast for this time.</p>}
           <p className="tm-src">Source: National Weather Service hourly forecast. Hurricane-center wind probabilities are not loaded in this version.</p>

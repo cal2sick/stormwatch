@@ -11,6 +11,12 @@
 - `index.html` is served with `Cache-Control: no-cache` so updates show without a hard reload.
 - New unit tests (slider marker position, label, radar pick, pan rule, landmarks) and a headless browser check.
 
+### Part 2: look up a place + nearby power outages (branch `preview`)
+- **Location search box** (address, city or ZIP). US Census Geocoder first, OpenStreetMap Nominatim fallback (at most 1 request per second, real User-Agent, no autocomplete; one search per click or Enter). Picking a result flies the map there, drops a pin, and makes it the selected place for distance, wind and alerts readouts.
+- **Privacy:** the selected place is saved only in your browser (localStorage). It goes only to this app's own local server, which passes it to the geocoder, the National Weather Service and outage feeds. These routes do not write request logs and nothing is saved to disk.
+- **Nearby power outages** (within 25 miles of the selected place): points on the map and a list with customers out, cause and estimated fix time (passed times are flagged). Sources come from `config/outage-sources.json`: City of Tallahassee Utilities (live public feed), plus link-outs for Talquin Electric, Duke Energy Florida and FPL, which have no free public feed. County totals come from ORNL ODIN where utilities report. Where no free feed covers a place, the app says so and links utility maps. Polls every 3 minutes, only while a place is selected.
+- Map auto-pan now only reacts to slider moves, so it no longer pulls the map back while you look at a searched place.
+
 ## v0.2.0 "Tornado night" (2026-10-09)
 
 - **Tornado watches and warnings on the map** (on by default): SPC tornado and severe thunderstorm watch polygons (via Iowa Environmental Mesonet `json/spcwatch.py`, since SPC's `ActiveWW.kml` returns 404) and NWS tornado warning polygons (api.weather.gov, official text verbatim; IEM `sbw.geojson` is a backup). Each shape is labelled in plain English with its expiry in ET; click for issuer, meaning and source.

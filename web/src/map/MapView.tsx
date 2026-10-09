@@ -34,7 +34,8 @@ function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); retur
 export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean }
 export interface Landmark { name: string; lat: number; lon: number; kind: string; source?: string }
 
-export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode }: {
+export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [] }: {
+  place?: { name: string; lat: number; lon: number } | null; placeOutages?: { lat: number; lon: number; customers: number; cause: string | null; etr: string | null; source: string; distanceMi: number }[];
   ghost?: SliderPos | null; hazards?: Hazard[]; hazardTime: number; mode?: ViewMode; onMode?: (m: ViewMode) => void;
   snap: Snapshot | null; storm: Storm | undefined; gis: StormGis | undefined;
   layers: Record<LayerKey, boolean>; onToggle: (k: LayerKey) => void; lowBandwidth: boolean;
@@ -99,6 +100,9 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
           "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": ["match", ["get", "kind"], "city", 15, 13],
           "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.7, "text-allow-overlap": false, "text-optional": true },
           paint: { "text-color": "#f2e9c9", "text-halo-color": "#070909", "text-halo-width": 2 } });
+        m.addSource("place-outages", { type: "geojson", data: EMPTY });
+        m.addLayer({ id: "place-outages", type: "circle", source: "place-outages", paint: {
+          "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 4, 100, 7, 1000, 12], "circle-color": "#ffb020", "circle-opacity": 0.85, "circle-stroke-color": "#070909", "circle-stroke-width": 1 } });
         for (const id of ["outages", "gauges", "buoys"]) m.addSource(id, { type: "geojson", data: EMPTY });
         m.addLayer({ id: "gauges", type: "circle", source: "gauges", paint: {
           "circle-radius": 3.5, "circle-stroke-width": 1, "circle-stroke-color": "#070909",
@@ -107,7 +111,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
           "circle-radius": 3.5, "circle-color": "#070909", "circle-stroke-color": "#c8cfc6", "circle-stroke-width": 1 } });
         m.addLayer({ id: "outages", type: "circle", source: "outages", paint: {
           "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 3, 100, 6, 1000, 10], "circle-color": "#d23c34", "circle-opacity": 0.85, "circle-stroke-color": "#070909", "circle-stroke-width": 1 } });
-        for (const id of ["outages", "gauges", "buoys", "fcst-pts"]) {
+        for (const id of ["outages", "gauges", "buoys", "fcst-pts", "place-outages"]) {
           m.on("click", id, (e) => {
             const p = e.features?.[0]?.properties as Record<string, any> | undefined;
             if (!p) return;
@@ -164,6 +168,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
   // forecast puts the storm at the slider time, with a trail from now to that time, an
   // uncertainty ring (typical NHC cone size at that lead time) and tropical-storm wind arrival lines up to that time.
   const ghostMk = useRef<Marker | null>(null);
+  const lastPanT = useRef<number | null>(null);
   // Fallback when no NHC track is loaded yet: the one storm icon sits at the latest observed position.
   const main: SliderPos | null = ghost ?? (storm ? { lat: storm.lat, lon: storm.lon, time: Date.parse(storm.lastUpdate ?? "") || Date.now(), trail: [], uncertaintyMi: 0, live: true,
     label: stormLabel(storm.name, Date.parse(storm.lastUpdate ?? "") || Date.now(), ktToMph(storm.intensityKt), storm.category, true) } : null);
@@ -194,10 +199,34 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     // Faint "now" dot only when looking at another time.
     src("storm-now")?.setData(fc(!ghost.live && storm ? [pt(storm.lon, storm.lat, {})] : []));
     // Keep the storm in view: pan only once it leaves the central 70% of the map (no jitter while dragging).
+    // Only when the user moved the slider (not on the once-a-second live tick), so it never fights a manual pan or a place search.
+    const moved = lastPanT.current != null && Math.abs(ghost.time - lastPanT.current) > 30_000;
+    lastPanT.current = ghost.time;
     const c = m.getContainer(), p = m.project([ghost.lon, ghost.lat]);
-    if (needsPan(p.x, p.y, c.clientWidth, c.clientHeight, 0.7)) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 300 });
+    if (moved && needsPan(p.x, p.y, c.clientWidth, c.clientHeight, 0.7)) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 300 });
   }, [ready, main?.lat, main?.lon, main?.label, main?.uncertaintyMi, main?.live, storm?.lat, storm?.lon, gis]);
   useEffect(() => () => { ghostMk.current?.remove(); ghostMk.current = null; }, []);
+
+  // Selected location (browser-only): pin + fly there once per new place; nearby outage points.
+  const placeMk = useRef<Marker | null>(null);
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    placeMk.current?.remove(); placeMk.current = null;
+    if (!place) return;
+    const d = document.createElement("div"); d.className = "pin-place"; d.dataset.testid = "place-pin";
+    d.innerHTML = `<svg viewBox="0 0 20 28" width="20" height="28"><path d="M10 1C5 1 1 5 1 10c0 7 9 17 9 17s9-10 9-17c0-5-4-9-9-9z"/><circle cx="10" cy="10" r="3" fill="#070909"/></svg><span class="pin-label"></span>`;
+    d.querySelector(".pin-label")!.textContent = place.name.split(",")[0];
+    placeMk.current = new Marker({ element: d, anchor: "bottom" }).setLngLat([place.lon, place.lat]).addTo(m);
+    m.flyTo({ center: [place.lon, place.lat], zoom: Math.max(m.getZoom(), 8), duration: 900 });
+    (window as any).__place = { lat: place.lat, lon: place.lon };
+  }, [ready, place?.lat, place?.lon]);
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+    (map.current.getSource("place-outages") as GeoJSONSource | undefined)?.setData(fc(placeOutages.map((o) => pt(o.lon, o.lat, { customers: o.customers,
+      popup: `<b>Power outage</b><br>${o.customers} customer${o.customers === 1 ? "" : "s"} out · ${o.distanceMi} miles from the selected place<br>Cause: ${esc(o.cause ?? "unknown")}<br>Estimated fix: ${fmtET(o.etr)}<br><small>${esc(o.source)}</small>` }))));
+  }, [ready, placeOutages]);
 
   // Landmarks (public places) from config/landmarks.json.
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
@@ -224,7 +253,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     if (!ready || !m) return;
     const vis = (id: string, on: boolean) => m.getLayer(id) && m.setLayoutProperty(id, "visibility", on ? "visible" : "none");
     for (const [k, ids] of Object.entries(STORM_LAYER_IDS)) ids.forEach((id) => vis(id, layers[k as LayerKey]));
-    vis("outages", layers.outages);
+    vis("outages", layers.outages); vis("place-outages", layers.outages);
     HAZARD_LAYER_IDS.forEach((id) => vis(id, layers.tornado || layers.flood));
     vis("gauges", layers.gauges); vis("buoys", layers.buoys);
     vis("landmarks-dot", layers.landmarks); vis("landmarks-label", layers.landmarks);
