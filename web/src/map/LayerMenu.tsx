@@ -15,6 +15,7 @@ const ICON: Record<string, string> = {
   places: "M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12zM12 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
   night: "M20 14A8 8 0 1 1 10 4a6 6 0 0 0 10 10z",
   home: "M3 11l9-8 9 8M5 9v11h14V9",
+  eye: "M12 2v4M12 18v4M2 12h4M18 12h4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5v1",
   layers: "M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5",
 };
 export const Icon = ({ name, size = 20 }: { name: string; size?: number }) => (
@@ -22,7 +23,8 @@ export const Icon = ({ name, size = 20 }: { name: string; size?: number }) => (
 );
 
 /** v0.7 icon layer rail: one button per layer group, plus Standard/Hazards view and "center home". */
-export default function LayerMenu({ layers, onSet, mode, onMode, onHome }: {
+export default function LayerMenu({ layers, onSet, mode, onMode, onHome, follow, onFollow }: {
+  follow?: boolean; onFollow?: (v: boolean) => void;
   layers: Record<LayerKey, boolean>; onSet: (keys: LayerKey[], on: boolean) => void;
   mode: ViewMode; onMode?: (m: ViewMode) => void; onHome?: () => void;
 }) {
@@ -41,6 +43,7 @@ export default function LayerMenu({ layers, onSet, mode, onMode, onHome }: {
           <Icon name={g.id} /><span>{g.label}</span>
         </button>;
       })}
+      {onFollow && <button className={`lr-btn follow ${follow ? "on" : ""}`} aria-pressed={!!follow} onClick={() => onFollow(!follow)} title="Keep the storm centered while you move the time slider (drag the map to stop)" data-testid="follow-eye"><Icon name="eye" /><span>Follow the eye</span></button>}
       {onHome && <button className="lr-btn" onClick={onHome} title="Center the map on home"><Icon name="home" /><span>Center home</span></button>}
     </nav>
   );

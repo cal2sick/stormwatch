@@ -47,7 +47,8 @@ const POINT_LAYERS = ["outages", "gauges", "buoys", "tides", "cameras", "fcst-pt
 const compass = (d: number) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((d % 360) + 360) % 360 / 45) % 8];
 
 export default function MapView({ onJump, snap, storm, gis, layers, onToggle, onSetLayers, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode, place = null, placeOutages = [], evacZones = null, outageAreas = null,
-  smoothRadar = true, onSmoothRadar, homePoint = null, pickingHome = false, onMapPick }: {
+  smoothRadar = true, onSmoothRadar, homePoint = null, pickingHome = false, onMapPick, followEye = false, onFollowEye }: {
+  followEye?: boolean; onFollowEye?: (v: boolean) => void;
   outageAreas?: OutageAreas | null;
   smoothRadar?: boolean; onSmoothRadar?: (v: boolean) => void; homePoint?: { lat: number; lon: number } | null;
   pickingHome?: boolean; onMapPick?: (p: { lat: number; lon: number }) => void;
@@ -94,7 +95,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
       try { const r = await fetch(OFM_STYLE, { signal: AbortSignal.timeout(6000) }); if (r.ok) style = await r.json(); } catch { /* offline */ }
       if (cancelled || !el.current) return;
       const m = new maplibregl.Map({ container: el.current, style, center: [-85.5, 29], zoom: 5, attributionControl: { compact: true } });
-      map.current = m;
+      map.current = m; (window as any).__swMap = m; // debug hook for headless checks
       (window as any).__map = m; // debug hook for headless checks
       m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
       m.on("load", () => {
@@ -262,6 +263,10 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
   }, [ready]);
 
   const refit = useRef<((d?: number) => void) | null>(null);
+  const followRef = useRef(followEye); followRef.current = followEye;
+  const onFollowRef = useRef(onFollowEye); onFollowRef.current = onFollowEye;
+  // A manual drag ends Follow the eye (so it never fights the user).
+  useEffect(() => { const m = map.current; if (!ready || !m) return; const h = (e: any) => { if (e.originalEvent && followRef.current) onFollowRef.current?.(false); }; m.on("dragstart", h); return () => { m.off("dragstart", h); }; }, [ready]);
   // Markers: home + storms.
   useEffect(() => {
     const m = map.current;
@@ -321,8 +326,10 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
     const moved = lastPanT.current != null && Math.abs(ghost.time - lastPanT.current) > 30_000;
     lastPanT.current = ghost.time;
     const c = m.getContainer(), p = m.project([ghost.lon, ghost.lat]);
-    if (moved && needsPan(p.x, p.y, c.clientWidth, c.clientHeight, 0.7)) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 300 });
-  }, [ready, main?.lat, main?.lon, main?.label, main?.windMph, main?.uncertaintyMi, main?.live, main?.radii, storm?.lat, storm?.lon, gis]);
+    // v0.7 "Follow the eye": keep the storm centered (in the free map area) while the slider moves or plays.
+    if (followRef.current) m.easeTo({ center: [ghost.lon, ghost.lat], duration: moved ? 250 : 600 });
+    else if (moved && needsPan(p.x, p.y, c.clientWidth, c.clientHeight, 0.7)) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 300 });
+  }, [ready, followEye, main?.lat, main?.lon, main?.label, main?.windMph, main?.uncertaintyMi, main?.live, main?.radii, storm?.lat, storm?.lon, gis]);
   useEffect(() => () => { ghostMk.current?.remove(); ghostMk.current = null; }, []);
 
   // v0.6.1 "Change home" → "Click on the map": the next map click sets home (browser-only).
@@ -507,7 +514,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
         {phase === "past" && [-120, -60, -30, -10].map((m) => <button key={m} className="btn tick" onClick={() => onJump(Math.round((tNow + m * 60_000) / 300_000) * 300_000)}>{m} min</button>)}
         {phase === "forecast" && [30, 60, 90, 120, 180].map((m) => <button key={m} className={`btn tick ${Math.abs(sliderT - tNow - m * 60_000) < 8 * 60_000 ? "on" : ""}`} onClick={() => onJump(tNow + m * 60_000)}>+{m} min</button>)}
       </div>}
-      <LayerMenu layers={layers} mode={mode} onMode={onMode} onSet={(keys, on) => onSetLayers ? onSetLayers(keys, on) : keys.forEach((k) => { if (layers[k] !== on) onToggle(k); })}
+      <LayerMenu layers={layers} mode={mode} onMode={onMode} follow={followEye} onFollow={onFollowEye} onSet={(keys, on) => onSetLayers ? onSetLayers(keys, on) : keys.forEach((k) => { if (layers[k] !== on) onToggle(k); })}
         onHome={snap?.home.configured ? () => { fitted.current = null; map.current?.flyTo({ center: [snap.home.lon, snap.home.lat], zoom: 6 }); } : undefined} />
       {main && <div className="map-time" data-testid="map-time">Map shows: {new Date(main.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET{main.live ? " (live)" : main.time > Date.now() ? " (forecast)" : " (past)"}</div>}
       </div>

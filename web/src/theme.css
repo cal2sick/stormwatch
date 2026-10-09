@@ -658,3 +658,7 @@ input:focus-visible, button:focus-visible, select:focus-visible { outline: 2px s
 .rain-sofar.compact .rs-grid b { font-size: 17px; }
 .rain-ramp { display: flex; align-items: center; gap: 4px; margin-top: 3px; } .rain-ramp i { width: 16px; height: 8px; border-radius: 3px; margin-left: 6px; }
 .map-legend { top: 62px !important; z-index: 9; }
+.lr-btn.follow { border-top: 1px solid var(--line); border-radius: 4px 4px 11px 11px; margin-top: 2px; }
+/* v0.7 fix: map markers must stay position:absolute (the .pin-* "position: relative" rules pushed each marker down
+   by the height of the markers before it, so the storm icon sat ~90 px south of its real position). */
+.maplibregl-marker { position: absolute !important; }

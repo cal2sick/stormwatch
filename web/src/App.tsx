@@ -65,7 +65,7 @@ export default function App() {
   const gis = useGis(snap?.gisVersion);
   const now = useNow(1000);
   const [layers, setLayers] = usePref<Record<LayerKey, boolean>>("layers-v7", DEFAULT_LAYERS);
-  const [prefs, setPrefs] = usePref("prefs", { voice: false, notify: false, lowBw: false, mode: "standard" as ViewMode, smoothRadar: true });
+  const [prefs, setPrefs] = usePref("prefs", { voice: false, notify: false, lowBw: false, mode: "standard" as ViewMode, smoothRadar: true, followEye: false });
   const hazards = useHazards(snap?.hazardsVersion);
   const [stormId, setStormId] = useState<string | null>(null);
   const [tm, setTm] = useState<SliderState | null>(null);
@@ -188,6 +188,7 @@ export default function App() {
               place={place} placeOutages={placeOut?.outages ?? []} evacZones={evac?.countyZones ?? null} outageAreas={outageAreas}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
               ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, radii: tm.radii, windMph: tm.windMph, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
+              followEye={!!prefs.followEye} onFollowEye={(v) => setPrefs((p) => ({ ...p, followEye: v }))}
               smoothRadar={prefs.smoothRadar !== false} onSmoothRadar={(v) => setPrefs((p) => ({ ...p, smoothRadar: v }))}
               homePoint={snap?.home.configured ? { lat: snap.home.lat, lon: snap.home.lon } : null}
               pickingHome={pickingHome} onMapPick={(p) => { setBrowserHome({ name: `Home (${p.lat.toFixed(3)}, ${p.lon.toFixed(3)})`, lat: p.lat, lon: p.lon, source: "browser" }); setPickingHome(false); }}
