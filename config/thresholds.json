@@ -49,7 +49,15 @@
     "ndbc": 600,
     "radar": 300,
     "power": 180,
-    "odin": 900
+    "odin": 900,
+    "coops": 360,
+    "obs": 600
   },
-  "inConeYellowMaxMi": 300
+  "inConeYellowMaxMi": 300,
+  "coopsStations": [
+    "8728690",
+    "8727520",
+    "8729108",
+    "8729210"
+  ]
 }

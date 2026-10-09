@@ -21,6 +21,7 @@ export type Thresholds = {
   tsWindArrivalHoursOrange: number;
   inConeYellowMaxMi?: number;
   notify: { pressureDropMb: number; gaugeRiseFt3h: number; nearOutageMi?: number; staleFeedMinutes?: number };
+  coopsStations?: string[];
   pollSeconds: Record<string, number>;
   [k: string]: unknown;
 };

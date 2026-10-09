@@ -109,7 +109,7 @@ export interface Buoy {
   pressureTendencyMb: number | null;
 }
 
-export interface RadarFrames { host: string; frames: { time: string; path: string }[]; generated: string | null }
+export interface RadarFrames { host: string; kind?: "iem" | "rainviewer"; frames: { time: string; path: string }[]; generated: string | null }
 
 export interface Outage {
   lat: number; lon: number; customers: number; status: string | null; cause: string | null;
@@ -156,6 +156,8 @@ export interface Snapshot {
   forecast: Forecast | null;
   gauges: Gauge[];
   buoys: Buoy[];
+  tides: TideStation[];       // NOAA CO-OPS water levels (config/thresholds.json coopsStations)
+  localObs: LocalObs | null;  // nearest NWS station to home
   radar: RadarFrames | null;
   power: Power;
   threat: { level: ThreatLevel; reasons: string[]; computedLevel?: ThreatLevel; holdUntil?: string | null };
@@ -213,4 +215,15 @@ export interface StormTimeline {
   latest: AdvisoryRecord | null; // latest full advisory forecast
   advisories: AdvisorySummary[]; // newest first
   updated: string;
+}
+
+/** CO-OPS water level station (feet, MHHW datum = the normal high-tide line). */
+export interface TideStation {
+  id: string; name: string; lat: number; lon: number; time: string;
+  levelFtMhhw: number; predictedFtMhhw: number | null; aboveForecastFt: number | null; change3hFt: number | null; url: string;
+}
+/** Latest observation at the nearest NWS station to home. */
+export interface LocalObs {
+  stationId: string; stationName: string; time: string | null; text: string | null;
+  tempF: number | null; windMph: number | null; gustMph: number | null; windDirDeg: number | null; pressureMb: number | null; rainLastHourIn: number | null; url: string;
 }

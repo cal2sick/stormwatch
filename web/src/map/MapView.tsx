@@ -3,13 +3,13 @@ import maplibregl, { Map as MlMap, Marker, type GeoJSONSource, type StyleSpecifi
 import type { Hazard, Snapshot, Storm, StormGis } from "../types";
 import { fmtClockET, fmtET, staleness } from "../time";
 import { addStormLayers, STORM_LAYER_IDS, updateStormLayers, WW_HEX } from "./ConeLayer";
-import { RADAR_MAX_FRAMES, showRadarFrame, syncRadarFrames } from "./RadarLayer";
+import { RADAR_MAX_FRAMES, showRadarAt, showRadarFrame, syncRadarFrames } from "./RadarLayer";
 import { LAYER_LABELS, VIEW_LABELS, type LayerKey, type ViewMode } from "./layers";
 import { addHazardLayers, HAZARD_LAYER_IDS, updateHazardLayers } from "./HazardLayer";
 import { activeAt, CONE_TEXT, FLOOD_KINDS, HAZARD_HEX, HAZARD_NAME, hazardFeatures, TORNADO_KINDS, untilET } from "../hazards";
 import { circle } from "../timeline";
 import { className, ktToMph } from "../format";
-import { needsPan, radarForTime, stormLabel } from "./sliderView";
+import { goesTimeAt, needsPan, radarForTime, stormLabel } from "./sliderView";
 import { quadRing, type RadiiState } from "../stormTime";
 
 const OFM_STYLE = "https://tiles.openfreemap.org/styles/dark";
@@ -30,6 +30,7 @@ function graticule(): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features: f };
 }
 
+const GOES_URL = (time: string) => `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/${time}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`;
 function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); return d.toISOString().slice(0, 10); }
 
 export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean; radii?: RadiiState }
@@ -68,6 +69,9 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
           tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_DayNightBand_At_Sensor_Radiance/default/${yesterdayUtc()}/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png`],
           attribution: "NASA GIBS / VIIRS" });
         m.addLayer({ id: "nightlights", type: "raster", source: "nightlights", layout: { visibility: "none" }, paint: { "raster-opacity": 0.8 } });
+        // GOES-19 (GOES-East) clean infrared, time-matched to the slider (NASA GIBS, keyless).
+        m.addSource("goes", { type: "raster", tileSize: 256, maxzoom: 6, tiles: [GOES_URL(goesTimeAt(Date.now(), Date.now()).time)], attribution: "GOES-19 imagery: NOAA / NASA GIBS" });
+        m.addLayer({ id: "goes", type: "raster", source: "goes", layout: { visibility: "none" }, paint: { "raster-opacity": 0.7, "raster-fade-duration": 0 } });
         m.addSource("graticule", { type: "geojson", data: graticule() });
         m.addLayer({ id: "grat-line", type: "line", source: "graticule", filter: ["==", ["geometry-type"], "LineString"],
           paint: { "line-color": "#7fae8c", "line-opacity": ["case", ["get", "major"], 0.22, 0.09], "line-width": 0.6 } });
@@ -107,7 +111,8 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
         m.addSource("place-outages", { type: "geojson", data: EMPTY });
         m.addLayer({ id: "place-outages", type: "circle", source: "place-outages", paint: {
           "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 4, 100, 7, 1000, 12], "circle-color": "#ffb020", "circle-opacity": 0.85, "circle-stroke-color": "#070909", "circle-stroke-width": 1 } });
-        for (const id of ["outages", "gauges", "buoys"]) m.addSource(id, { type: "geojson", data: EMPTY });
+        for (const id of ["outages", "gauges", "buoys", "tides"]) m.addSource(id, { type: "geojson", data: EMPTY });
+        m.addLayer({ id: "tides", type: "circle", source: "tides", paint: { "circle-radius": 5, "circle-color": ["step", ["get", "above"], "#4dabf7", 1, "#f08c00", 2, "#e03131"], "circle-stroke-color": "#070909", "circle-stroke-width": 1.5 } });
         m.addLayer({ id: "gauges", type: "circle", source: "gauges", paint: {
           "circle-radius": 3.5, "circle-stroke-width": 1, "circle-stroke-color": "#070909",
           "circle-color": ["match", ["get", "trend"], "rising", "#c47f45", "falling", "#7fae8c", "steady", "#8b938d", "#5d6b62"] } });
@@ -115,7 +120,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
           "circle-radius": 3.5, "circle-color": "#070909", "circle-stroke-color": "#c8cfc6", "circle-stroke-width": 1 } });
         m.addLayer({ id: "outages", type: "circle", source: "outages", paint: {
           "circle-radius": ["interpolate", ["linear"], ["get", "customers"], 1, 3, 100, 6, 1000, 10], "circle-color": "#d23c34", "circle-opacity": 0.85, "circle-stroke-color": "#070909", "circle-stroke-width": 1 } });
-        for (const id of ["outages", "gauges", "buoys", "fcst-pts", "place-outages"]) {
+        for (const id of ["outages", "gauges", "buoys", "tides", "fcst-pts", "place-outages"]) {
           m.on("click", id, (e) => {
             const p = e.features?.[0]?.properties as Record<string, any> | undefined;
             if (!p) return;
@@ -150,6 +155,8 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
       popup: `<b>POWER OUTAGE</b><br>${o.customers} customers · ${o.status ?? ""}<br>Cause: ${o.cause ?? "—"}<br>Off: ${fmtET(o.off)}<br>Estimated fix: ${fmtET(o.etr)}${o.etrPassed ? " <b class='red'>(PASSED)</b>" : ""}<br>${o.distanceMi} mi from you` }))));
     set("gauges", fc(snap.gauges.map((g) => pt(g.lon, g.lat, { trend: g.trend,
       popup: `<b>${g.name}</b><br>Stage ${g.stageFt ?? "—"} ft · ${g.trend} (${g.change3hFt ?? "?"} ft / 3 h)<br>USGS ${g.id} · ${fmtET(g.time)}` }))));
+    set("tides", fc((snap.tides ?? []).filter((x) => isFinite(x.lat) && isFinite(x.lon)).map((x) => pt(x.lon, x.lat, { above: x.aboveForecastFt ?? 0,
+      popup: `<b>${x.name}</b> (NOAA tide gauge ${x.id})<br>Water ${x.levelFtMhhw} ft vs normal high tide · ${x.aboveForecastFt ?? "—"} ft vs predicted tide<br>${fmtET(x.time)}` }))));
     set("buoys", fc(snap.buoys.map((b) => pt(b.lon, b.lat, {
       popup: `<b>NDBC ${b.id}</b> ${b.name}<br>Wind ${ktToMph(b.windKt) ?? "—"} mph, gusts ${ktToMph(b.gustKt) ?? "—"} mph · ${b.pressureMb ?? "—"} mb · seas ${b.waveFt ?? "—"} ft<br>${b.distanceToStormMi} mi from storm · ${fmtET(b.time)}` }))));
   }, [ready, snap]);
@@ -263,9 +270,10 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     for (const [k, ids] of Object.entries(STORM_LAYER_IDS)) ids.forEach((id) => vis(id, layers[k as LayerKey]));
     vis("outages", layers.outages); vis("place-outages", layers.outages);
     HAZARD_LAYER_IDS.forEach((id) => vis(id, layers.tornado || layers.flood));
-    vis("gauges", layers.gauges); vis("buoys", layers.buoys);
+    vis("gauges", layers.gauges); vis("buoys", layers.buoys); vis("tides", layers.buoys);
     vis("landmarks-dot", layers.landmarks); vis("landmarks-label", layers.landmarks);
     vis("nightlights", layers.nightlights && !lowBandwidth);
+    vis("goes", layers.satellite && !lowBandwidth);
     baseLayers.current.forEach((id) => { if (id !== "bg" && !/background/.test(id)) vis(id, !lowBandwidth); });
   }, [ready, layers, lowBandwidth]);
 
@@ -278,7 +286,14 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
   }, [ready, snap?.radar, layers.radar, lowBandwidth]);
   // Radar follows the slider: live = animated loop; past = the closest observed frame; future = no radar.
   const frames = snap?.radar?.frames.slice(-RADAR_MAX_FRAMES) ?? [];
-  const radarPick = radarForTime(frames, main?.time ?? Date.now(), Date.now(), main?.live ?? true);
+  const radarPick = radarForTime(frames, main?.time ?? Date.now(), Date.now(), main?.live ?? true, snap?.radar?.kind === "iem");
+  const goes = goesTimeAt(main?.time ?? Date.now(), Date.now());
+  useEffect(() => {
+    const src = map.current?.getSource("goes") as unknown as { setTiles?: (t: string[]) => void } | undefined;
+    if (ready && layers.satellite && src?.setTiles) src.setTiles([GOES_URL(goes.time)]);
+  }, [ready, goes.time, layers.satellite]);
+  const archStamp = radarPick.mode === "archive" ? radarPick.stamp : null;
+  useEffect(() => { if (map.current && ready) showRadarAt(map.current, archStamp, layers.radar && !lowBandwidth); }, [ready, archStamp, layers.radar, lowBandwidth]);
   const radarLive = radarPick.mode === "live";
   useEffect(() => {
     if (!playing || !radarLive || radarIds.current.length < 2) return;
@@ -327,11 +342,13 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
         {(layers.tornado || layers.flood) && <div className="ww-key">
           {[...(layers.tornado ? TORNADO_KINDS : []), ...(layers.flood ? FLOOD_KINDS : [])].map((k) => <span key={k}><i style={{ background: HAZARD_HEX[k] }} />{HAZARD_NAME[k]} </span>)}
         </div>}
-        {mode !== "hazards" && <div className={`stale-${st("radar")}`}>Radar (RainViewer) · latest {fmtET(snap?.radar?.frames.at(-1)?.time)}</div>}
+        {mode !== "hazards" && <div className={`stale-${st("radar")}`}>Radar ({snap?.radar?.kind === "rainviewer" ? "RainViewer, backup" : "NOAA NEXRAD via Iowa Environmental Mesonet"}) · latest {fmtET(snap?.radar?.frames.at(-1)?.time)}</div>}
         {snap?.power.local && <div className={`stale-${st("power")}`}>{snap.power.local.name}: {snap.power.local.count} · as of {fmtET(f.power?.sourceTime)}</div>}
         {snap?.home.configured && <div className={`stale-${st("usgs")}`}>River gauges (USGS) · {fmtET(f.usgs?.sourceTime)} <span className="lg-dot r" />rising <span className="lg-dot s" />steady</div>}
         <div className={`stale-${st("ndbc")}`}>Buoys near the storm (NOAA) · {fmtET(f.ndbc?.sourceTime)}</div>
+        {(snap?.tides?.length ?? 0) > 0 && <div className={`stale-${st("coops")}`}>Tide gauges (NOAA CO-OPS), color = water above predicted tide · {fmtET(f.coops?.sourceTime)}</div>}
         <div className="ww-key"><i style={{ background: WW_HEX.HWR }} />Hurricane warning <i style={{ background: WW_HEX.HWA }} />Hurricane watch <i style={{ background: WW_HEX.TWR }} />Tropical storm warning <i style={{ background: WW_HEX.TWA }} />Tropical storm watch</div>
+        {layers.satellite && <div>Satellite: GOES-19 infrared (cloud tops; brighter = colder, stronger storms) at {fmtET(goes.time)}{goes.clamped ? " (latest available, images arrive about 30 minutes late; not a forecast)" : ""} · NOAA / NASA GIBS</div>}
         {layers.nightlights && <div>NASA night lights satellite ({yesterdayUtc()}, clouds block it; post-storm use)</div>}
       </details>
     </div>

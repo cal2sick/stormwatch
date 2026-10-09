@@ -7,9 +7,11 @@ import { fetchNhc, NHC_URL, type RawStorm } from "./sources/nhc.js";
 import { buildStormGis } from "./sources/nhcGis.js";
 import { dropTimelines, updateTimeline } from "./advisories.js";
 import { fetchForecast, fetchNwsAlerts, nwsAlertsUrl, nwsPointsUrl } from "./sources/nws.js";
-import { fetchRadar, RAINVIEWER_URL } from "./sources/radar.js";
+import { fetchRadar, RADAR_URL } from "./sources/radar.js";
 import { fetchUsgs, usgsUrl } from "./sources/usgs.js";
 import { fetchNdbc, NDBC_STATIONS_URL } from "./sources/ndbc.js";
+import { COOPS_URL, fetchCoops } from "./sources/coops.js";
+import { fetchLocalObs, pointsUrl } from "./sources/localObs.js";
 import { fetchArcgisOutages, fetchOdin, ODIN_URL, POWER_LINKS } from "./sources/power.js";
 import { applyHysteresis, computeThreat, type HystState } from "./threat.js";
 import { diffEvents, mkEvent } from "./events.js";
@@ -22,7 +24,7 @@ bus.setMaxListeners(100);
 
 const EMPTY: Omit<Snapshot, "home"> = {
   version: "", gisVersion: "", generatedAt: new Date().toISOString(), storms: [], alerts: [], forecast: null,
-  gauges: [], buoys: [], radar: null, power: { local: null, odin: null, links: POWER_LINKS }, events: [],
+  gauges: [], buoys: [], tides: [], localObs: null, radar: null, power: { local: null, odin: null, links: POWER_LINKS }, events: [],
   threat: { level: "DATA STALE", reasons: ["No data yet"] }, feeds: {},
   hazards: [], homeHazardIds: [], hazardsVersion: "", hazardNotes: [],
 };
@@ -32,6 +34,7 @@ snapshot.power = { ...EMPTY.power, ...(snapshot.power ?? {}), links: POWER_LINKS
 if (!OUTAGE_ARCGIS_URL) { snapshot.power.local = null; delete snapshot.feeds?.power; }
 if (!ODIN_FIPS) { snapshot.power.odin = null; delete snapshot.feeds?.odin; }
 if (!snapshot.home.configured) { snapshot.alerts = []; snapshot.forecast = null; snapshot.gauges = []; for (const k of ["nws", "forecast", "usgs"]) delete snapshot.feeds?.[k]; }
+snapshot.tides ??= []; snapshot.localObs ??= null;
 snapshot.hazards ??= []; snapshot.homeHazardIds ??= []; snapshot.hazardsVersion ??= ""; snapshot.hazardNotes ??= [];
 export const getSnapshot = () => snapshot;
 
@@ -217,11 +220,20 @@ const jobs: Job[] = [
       return r.sourceTime;
     },
   },
-  { key: "radar", source: "RainViewer radar", url: () => RAINVIEWER_URL, run: async () => { const r = await fetchRadar(); snapshot.radar = r.radar; return r.sourceTime; } },
+  { key: "radar", source: "NEXRAD radar composite (Iowa Environmental Mesonet)", url: () => RADAR_URL, run: async () => { const r = await fetchRadar(); snapshot.radar = r.radar; return r.sourceTime; } },
   { key: "usgs", source: "USGS river gauges near you (NWIS)", url: () => usgsUrl(loadHome()), run: async () => { const r = await fetchUsgs(loadHome()); snapshot.gauges = r.gauges; return r.sourceTime; }, enabled: needsHome },
   {
     key: "ndbc", source: "NDBC buoys near storm", url: () => NDBC_STATIONS_URL,
     run: async () => { const r = await fetchNdbc(snapshot.storms[0] ?? null); snapshot.buoys = r.buoys; return r.sourceTime; },
+  },
+  {
+    key: "coops", source: "NOAA CO-OPS water levels (Tides and Currents)", url: () => COOPS_URL,
+    run: async () => { const r = await fetchCoops(loadThresholds().coopsStations ?? []); snapshot.tides = r.tides; return r.sourceTime; },
+    enabled: () => (loadThresholds().coopsStations ?? []).length > 0,
+  },
+  {
+    key: "obs", source: "Nearest NWS weather station (api.weather.gov)", url: () => pointsUrl(loadHome()),
+    run: async () => { const r = await fetchLocalObs(loadHome()); snapshot.localObs = r.obs; return r.sourceTime; }, enabled: needsHome,
   },
   {
     // Optional plugin (off by default): set OUTAGE_ARCGIS_URL in .env. See docs/DATA-SOURCES.md.
@@ -261,7 +273,7 @@ export async function runJob(job: Job): Promise<boolean> {
 /** Each job polls on its own interval, with exponential backoff on failure (max 30 min) and Retry-After honored. */
 export function startPolling() {
   // NHC first, then its GIS (needs the raw storm list), then everything else staggered a little.
-  const order = ["nhc", "nhcgis", "timeline", "nws", "hazards", "forecast", "radar", "usgs", "ndbc", "power", "odin"];
+  const order = ["nhc", "nhcgis", "timeline", "nws", "hazards", "forecast", "radar", "usgs", "ndbc", "coops", "obs", "power", "odin"];
   order.forEach((key, i) => {
     const job = jobs.find((j) => j.key === key)!;
     if (job.enabled && !job.enabled()) return; // feature off (no location set, or optional plugin not configured)

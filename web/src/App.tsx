@@ -12,6 +12,8 @@ import HourlyStrip from "./hud/HourlyStrip";
 import PowerPanel from "./hud/PowerPanel";
 import RiversPanel from "./hud/RiversPanel";
 import BuoysPanel from "./hud/BuoysPanel";
+import TidesPanel from "./hud/TidesPanel";
+import LocalObsPanel from "./hud/LocalObsPanel";
 import EventLog from "./hud/EventLog";
 import LinksPanel from "./hud/LinksPanel";
 import Panel from "./hud/Panel";
@@ -124,6 +126,7 @@ export default function App() {
           <Panel title={place ? `Threat level for ${place.name.split(",")[0]} and why` : "Your threat level and why"} source="rules in config/thresholds.json over NWS + NHC" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
             <ThreatLadder snap={threatView} variant="full" />
           </Panel>
+          <LocalObsPanel snap={snap} area="obs" />
           <AlertList snap={snap} area="alerts" />
           <HazardsPanel snap={snap} time={hazardTime} area="hazards" />
           {more && <VitalsPanel snap={snap} storm={storm} now={now} area="vitals" />}
@@ -147,6 +150,7 @@ export default function App() {
         {more && <aside className="col right">
           <PowerPanel snap={snap} area="power" />
           <RiversPanel snap={snap} area="rivers" />
+          <TidesPanel snap={snap} area="tides" />
           <BuoysPanel snap={snap} area="buoys" />
           <EventLog snap={snap} area="events" />
           <LinksPanel area="links" office={snap?.forecast?.office ?? null} extra={storm?.publicAdvisoryUrl ? [{ name: `NHC advisory ${storm.advisoryNumber ?? ""}`, url: storm.publicAdvisoryUrl }] : []} />

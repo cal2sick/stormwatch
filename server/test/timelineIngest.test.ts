@@ -16,7 +16,7 @@ const best = parseDeck(fx("bal102023.dat"), "BEST");
 const ofcl = parseDeck(fx("aal102023-ofcl.dat"), "OFCL");
 const arch = JSON.parse(fx("CurrentStorms_2023-08-29-2036.json")).activeStorms[0];
 const strip = ({ baseUTC: _b, ...f }: any) => f;
-const home = { lat: 30.44, lon: -84.28 }; // a public city center (Tallahassee City Hall area), not a home
+const home = { lat: 30.69, lon: -88.04 }; // an arbitrary public point (downtown Mobile, AL)
 
 describe("ATCF decks", () => {
   it("parses lat/lon tenths and DTG", () => {

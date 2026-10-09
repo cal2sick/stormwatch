@@ -67,8 +67,11 @@ export function quadRing(lon: number, lat: number, q: Quad, stepsPerQuad = 12): 
  * Time-sliced cone circle (NHC 2026 radii) for the slider time: radius from the advisory's tau at t.
  * Null before the advisory's synoptic time (the past has no cone).
  */
-export function coneCircleAt(adv: AdvisoryRecord | null, stormId: string, t: number): { tau: number; radiusMi: number } | null {
+export function coneCircleAt(adv: AdvisoryRecord | null, stormId: string, t: number, notBefore = -Infinity): { tau: number; radiusMi: number } | null {
   if (!adv || adv.kind !== "full") return null;
+  // The cone starts at the advisory's first (observed) point; earlier times are the past.
+  const first = Date.parse(adv.points[0]?.validUTC ?? "");
+  if (t <= Math.max(notBefore, isFinite(first) ? first : -Infinity)) return null;
   const syn = adv.synopticUTC ? Date.parse(adv.synopticUTC) : Date.parse(adv.points[0]?.validUTC ?? "") - (adv.points[0]?.tau ?? 0) * 3.6e6;
   if (!isFinite(syn) || t <= syn) return null;
   const tau = (t - syn) / 3.6e6;

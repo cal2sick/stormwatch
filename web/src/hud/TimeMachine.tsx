@@ -65,7 +65,7 @@ export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAd
   if (st && live) st.time = now;
   const cpa = useMemo(() => closestApproach(track, home, now), [track, home.lat, home.lon, Math.floor(now / 60_000)]);
   const trail = useMemo(() => pathBetween(track, Math.min(now, t), Math.max(now, t)), [track, Math.floor(now / 60_000), t]);
-  const coneAt = advRec ? coneCircleAt(advRec, storm?.id ?? "", t) : null;
+  const coneAt = advRec ? coneCircleAt(advRec, storm?.id ?? "", live ? now : t, isLatest && liveObs != null ? liveObs : -Infinity) : null;
   const uncertaintyMi = coneAt?.radiusMi ?? 0;
   const radii = useMemo(() => radiiAt(track, live && liveObs != null ? liveObs : t), [track, t, live, liveObs]);
   const rKey = [radii.r34, radii.r50, radii.r64].map((q) => q?.map(Math.round).join(",")).join("|");
