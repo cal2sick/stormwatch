@@ -4,7 +4,7 @@ import { cleanTrack, closestApproach, describe, fmtLat, fmtLon, fmtTime, ktToMph
 import { CONE_TEXT } from "../hazards";
 import { adviceWindows, alertsActiveAt, coneRadiusMi, fullTrack, hourAt, magnets, pathBetween, snapTime } from "../timeline";
 
-export type SliderState = TrackState & { trail: [number, number][]; uncertaintyMi: number };
+export type SliderState = TrackState & { trail: [number, number][]; uncertaintyMi: number; live: boolean };
 const fmtShort = (t: number) => new Date(t).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric" });
 
 const STEP = 15 * 60_000;
@@ -62,7 +62,7 @@ export default function TimeMachine({ snap, storm, gis, now, onState }: {
   const advTime = track.find((p) => p.tau === 0)?.time ?? track[0]?.time ?? start;
   const trail = useMemo(() => pathBetween(track, Math.min(now, t), Math.max(now, t)), [track, Math.floor(now / 60_000), t]);
   const uncertaintyMi = coneRadiusMi((t - advTime) / 3.6e6);
-  useEffect(() => { onState(st ? { ...st, trail, uncertaintyMi } : null); }, [st?.lat, st?.lon, st?.time, trail.length, uncertaintyMi]);
+  useEffect(() => { onState(st ? { ...st, trail, uncertaintyMi, live } : null); }, [st?.lat, st?.lon, st?.time, st?.windMph, trail.length, uncertaintyMi, live]);
   const hourly = snap?.forecast?.hourly ?? [];
   const homeHour = hourAt(hourly, t);
   const activeAlerts = alertsActiveAt(snap?.alerts ?? [], t);

@@ -69,6 +69,7 @@ The server only listens on `localhost`. To give a friend a temporary link while 
 
 - `.env`: location, `USER_AGENT`, `PORT` / `HOST`, optional plugins. See `.env.example`.
 - `config/thresholds.json`: threat rules, stale thresholds and poll intervals (re-read every poll).
+- `config/landmarks.json`: public places drawn on the map for everyone ("Places" layer, on by default). Ships with Tallahassee, Florida State University and Collegetown. Add your own `{ "name", "lat", "lon", "kind" }` entries. Never put your home here; that stays in `.env`.
 - Optional data plugins (power outages, county outage reports) are **off by default**. See [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md).
 
 ## Privacy

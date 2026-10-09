@@ -4,7 +4,7 @@ import websocket from "@fastify/websocket";
 import fastifyStatic from "@fastify/static";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { HOST, PORT, ROOT } from "./config.js";
+import { HOST, loadLandmarks, PORT, ROOT } from "./config.js";
 import { bus, getGis, getHazards, getSnapshot, startPolling } from "./poller.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
@@ -16,6 +16,9 @@ app.get("/api/snapshot", async () => getSnapshot());
 app.get("/api/gis", async () => getGis());
 /** Active watch / warning shapes (GeoJSON geometry + verbatim NWS text). Re-fetch when snapshot.hazardsVersion changes. */
 app.get("/api/hazards", async () => getHazards());
+
+/** Public map places from config/landmarks.json (re-read on each request so edits show after a reload). */
+app.get("/api/landmarks", async () => ({ landmarks: loadLandmarks() }));
 
 app.register(async (f) => {
   f.get("/ws", { websocket: true }, (socket) => {
@@ -31,7 +34,7 @@ app.register(async (f) => {
 // Production mode: serve the built HUD (web/dist) from this same port.
 const dist = path.join(ROOT, "web", "dist");
 if (existsSync(dist)) {
-  await app.register(fastifyStatic, { root: dist }); // wildcard: picks up rebuilt assets without a restart
+  await app.register(fastifyStatic, { root: dist, setHeaders: (res, file) => { if (file.endsWith(".html")) res.setHeader("Cache-Control", "no-cache"); } }); // wildcard: picks up rebuilt assets without a restart
   app.setNotFoundHandler((req, reply) => req.url.startsWith("/api") ? reply.code(404).send({ error: "not found" }) : reply.sendFile("index.html"));
 }
 

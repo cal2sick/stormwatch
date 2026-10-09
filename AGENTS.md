@@ -24,7 +24,8 @@ npm run smoke        # live fetch of every enabled feed (needs internet; not run
 Health check: `curl http://localhost:8787/api/health` -> `{"ok":true,...}`. Full state: `/api/snapshot`, geometry: `/api/gis`, watch/warning shapes: `/api/hazards`, live push: `/ws`.
 
 ## Layout
-- `server/src/config.ts`: env + `config/thresholds.json` loading. Location only from `HOME_LAT`/`HOME_LON`.
+- `web/src/map/sliderView.ts`: pure rules for what the map shows at the slider time (radar frame pick, pan rule, storm label). The selected storm has exactly ONE map icon (`.pin-storm-main`), always at the slider-time position.
+- `server/src/config.ts`: env + `config/thresholds.json` + `config/landmarks.json` loading. Location only from `HOME_LAT`/`HOME_LON`.
 - `server/src/poller.ts`: job list, scheduling, backoff, snapshot rebuild, derived per-storm fields.
 - `server/src/sources/*.ts`: one file per upstream source; each exports a URL builder and a `fetchX()` that returns `{ data, sourceTime }`.
 - `server/src/http.ts`: the only place that calls upstream `fetch` (User-Agent, ETag/Last-Modified, timeout, Retry-After).

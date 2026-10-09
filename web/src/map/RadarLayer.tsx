@@ -3,7 +3,7 @@ import type { Map as MlMap } from "maplibre-gl";
 import type { RadarFrames } from "../types";
 
 const PREFIX = "radar-";
-export const RADAR_MAX_FRAMES = 7; // ~1 h at 10-min spacing
+export const RADAR_MAX_FRAMES = 13; // ~2 h at 10-min spacing (all RainViewer past frames), so the slider can go back
 
 export function syncRadarFrames(m: MlMap, radar: RadarFrames | null, enabled: boolean): string[] {
   const frames = enabled && radar ? radar.frames.slice(-RADAR_MAX_FRAMES) : [];
@@ -23,5 +23,5 @@ export function syncRadarFrames(m: MlMap, radar: RadarFrames | null, enabled: bo
 }
 
 export function showRadarFrame(m: MlMap, ids: string[], idx: number) {
-  ids.forEach((id, i) => { if (m.getLayer(id)) m.setPaintProperty(id, "raster-opacity", i === idx ? 0.5 : 0); });
+  ids.forEach((id, i) => { if (m.getLayer(id)) m.setPaintProperty(id, "raster-opacity", i === idx ? 0.55 : 0); });
 }

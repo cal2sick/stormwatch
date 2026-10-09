@@ -25,6 +25,7 @@ import HazardBanner from "./hud/HazardBanner";
 import HazardsPanel from "./hud/HazardsPanel";
 import { useHazards } from "./useHazards";
 import { threatColor } from "./format";
+import { stormLabel } from "./map/sliderView";
 
 function usePref<T>(key: string, init: T) {
   const [v, setV] = useState<T>(() => { try { const s = localStorage.getItem("stormwatch:" + key); return s ? { ...init, ...JSON.parse(s) } : init; } catch { return init; } });
@@ -114,7 +115,7 @@ export default function App() {
           <div className="map-frame" data-area="map">
             <MapView snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} layers={shownLayers}
               hazards={hazards} hazardTime={hazardTime} mode={prefs.mode} onMode={(mode) => setPrefs((p) => ({ ...p, mode }))}
-              ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, label: `${storm.name} at ${new Date(tm.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" })} ET · ${tm.windMph ?? "?"} mph` } : null}
+              ghost={tm && storm ? { lat: tm.lat, lon: tm.lon, time: tm.time, trail: tm.trail, uncertaintyMi: tm.uncertaintyMi, live: tm.live, label: stormLabel(storm.name, tm.time, tm.windMph, tm.category, tm.live) } : null}
               onToggle={(k: LayerKey) => { setPrefs((p) => ({ ...p, mode: "standard" })); setLayers((l) => ({ ...l, [k]: !shownLayers[k] })); }} lowBandwidth={prefs.lowBw} />
           </div>
           {more && <div className="center-bottom">

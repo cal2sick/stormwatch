@@ -3,12 +3,13 @@ import maplibregl, { Map as MlMap, Marker, type GeoJSONSource, type StyleSpecifi
 import type { Hazard, Snapshot, Storm, StormGis } from "../types";
 import { fmtClockET, fmtET, staleness } from "../time";
 import { addStormLayers, STORM_LAYER_IDS, updateStormLayers, WW_HEX } from "./ConeLayer";
-import { showRadarFrame, syncRadarFrames } from "./RadarLayer";
+import { RADAR_MAX_FRAMES, showRadarFrame, syncRadarFrames } from "./RadarLayer";
 import { LAYER_LABELS, VIEW_LABELS, type LayerKey, type ViewMode } from "./layers";
 import { addHazardLayers, HAZARD_LAYER_IDS, updateHazardLayers } from "./HazardLayer";
 import { activeAt, CONE_TEXT, FLOOD_KINDS, HAZARD_HEX, HAZARD_NAME, hazardFeatures, TORNADO_KINDS, untilET } from "../hazards";
 import { circle } from "../timeline";
 import { className, ktToMph } from "../format";
+import { needsPan, radarForTime, stormLabel } from "./sliderView";
 
 const OFM_STYLE = "https://tiles.openfreemap.org/styles/dark";
 // Offline / low-bandwidth fallback: no basemap tiles at all.
@@ -30,7 +31,8 @@ function graticule(): GeoJSON.FeatureCollection {
 
 function yesterdayUtc() { const d = new Date(Date.now() - 36 * 3_600_000); return d.toISOString().slice(0, 10); }
 
-export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number }
+export interface SliderPos { lat: number; lon: number; time: number; label: string; trail: [number, number][]; uncertaintyMi: number; live: boolean }
+export interface Landmark { name: string; lat: number; lon: number; kind: string; source?: string }
 
 export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwidth, ghost, hazards = [], hazardTime, mode = "standard", onMode }: {
   ghost?: SliderPos | null; hazards?: Hazard[]; hazardTime: number; mode?: ViewMode; onMode?: (m: ViewMode) => void;
@@ -86,6 +88,17 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
         m.addLayer({ id: "tm-ring-line", type: "line", source: "tm-ring", paint: { "line-color": "#ff5a4f", "line-width": 1, "line-dasharray": [3, 2] } });
         m.addLayer({ id: "tm-toa-line", type: "line", source: "tm-toa", paint: { "line-color": "#e3a64a", "line-width": 2, "line-opacity": 0.9 } });
         m.addLayer({ id: "tm-trail-line", type: "line", source: "tm-trail", paint: { "line-color": "#ff5a4f", "line-width": 3 } });
+        // Faint "where the storm is now" dot, shown only when the slider is away from now.
+        m.addSource("storm-now", { type: "geojson", data: EMPTY });
+        m.addLayer({ id: "storm-now-dot", type: "circle", source: "storm-now", paint: { "circle-radius": 5, "circle-color": "#ff5a4f", "circle-opacity": 0.25, "circle-stroke-color": "#ff5a4f", "circle-stroke-opacity": 0.5, "circle-stroke-width": 1 } });
+        m.addLayer({ id: "storm-now-label", type: "symbol", source: "storm-now", layout: { "text-field": "now", "text-font": ["Noto Sans Regular"], "text-size": 12, "text-offset": [0, 1.1], "text-anchor": "top" }, paint: { "text-color": "#ff8a80", "text-opacity": 0.7, "text-halo-color": "#070909", "text-halo-width": 1.5 } });
+        // Public places from config/landmarks.json (on by default).
+        m.addSource("landmarks", { type: "geojson", data: EMPTY });
+        m.addLayer({ id: "landmarks-dot", type: "circle", source: "landmarks", paint: { "circle-radius": ["match", ["get", "kind"], "city", 5, 4], "circle-color": "#f2e9c9", "circle-stroke-color": "#070909", "circle-stroke-width": 1.5 } });
+        m.addLayer({ id: "landmarks-label", type: "symbol", source: "landmarks", layout: {
+          "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": ["match", ["get", "kind"], "city", 15, 13],
+          "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.7, "text-allow-overlap": false, "text-optional": true },
+          paint: { "text-color": "#f2e9c9", "text-halo-color": "#070909", "text-halo-width": 2 } });
         for (const id of ["outages", "gauges", "buoys"]) m.addSource(id, { type: "geojson", data: EMPTY });
         m.addLayer({ id: "gauges", type: "circle", source: "gauges", paint: {
           "circle-radius": 3.5, "circle-stroke-width": 1, "circle-stroke-color": "#070909",
@@ -141,8 +154,9 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     const mk = (cls: string, html: string) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; return d; };
     markers.current = [
       ...(!snap.home.configured ? [] : [new Marker({ element: mk("pin-home", `<svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="9" /><line x1="20" y1="0" x2="20" y2="13" /><line x1="20" y1="27" x2="20" y2="40" /><line x1="0" y1="20" x2="13" y2="20" /><line x1="27" y1="20" x2="40" y2="20" /></svg><span class="pin-label">HOME</span>`) }).setLngLat([snap.home.lon, snap.home.lat]).addTo(m)]),
-      ...snap.storms.map((s) => new Marker({ element: mk(`pin-storm ${s.id === storm?.id ? "pin-now" : ""}`,
-        `<svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="6" /><line x1="12" y1="0" x2="12" y2="24" /><line x1="0" y1="12" x2="24" y2="12" /></svg><span class="pin-label">${s.name} ${s.id === storm?.id ? "now" : ""} · ${s.category} · ${ktToMph(s.intensityKt) ?? "?"} mph</span>`) }).setLngLat([s.lon, s.lat]).addTo(m)),
+      // Other (not selected) storms only. The selected storm has exactly one icon: the slider-time marker below.
+      ...snap.storms.filter((s) => s.id !== storm?.id).map((s) => new Marker({ element: mk("pin-storm pin-other",
+        `<svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="6" /><line x1="12" y1="0" x2="12" y2="24" /><line x1="0" y1="12" x2="24" y2="12" /></svg><span class="pin-label">${s.name} now · ${s.category} · ${ktToMph(s.intensityKt) ?? "?"} mph</span>`) }).setLngLat([s.lon, s.lat]).addTo(m)),
     ];
   }, [ready, snap?.home.lat, snap?.home.lon, snap?.storms, storm?.id]);
 
@@ -150,9 +164,13 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
   // forecast puts the storm at the slider time, with a trail from now to that time, an
   // uncertainty ring (typical NHC cone size at that lead time) and tropical-storm wind arrival lines up to that time.
   const ghostMk = useRef<Marker | null>(null);
+  // Fallback when no NHC track is loaded yet: the one storm icon sits at the latest observed position.
+  const main: SliderPos | null = ghost ?? (storm ? { lat: storm.lat, lon: storm.lon, time: Date.parse(storm.lastUpdate ?? "") || Date.now(), trail: [], uncertaintyMi: 0, live: true,
+    label: stormLabel(storm.name, Date.parse(storm.lastUpdate ?? "") || Date.now(), ktToMph(storm.intensityKt), storm.category, true) } : null);
   useEffect(() => {
     const m = map.current;
     if (!ready || !m) return;
+    const ghost = main;
     const src = (id: string) => m.getSource(id) as GeoJSONSource | undefined;
     if (!ghost) {
       ghostMk.current?.remove(); ghostMk.current = null;
@@ -160,7 +178,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
       return;
     }
     if (!ghostMk.current) {
-      const d = document.createElement("div"); d.className = "pin-slider";
+      const d = document.createElement("div"); d.className = "pin-slider pin-storm-main"; d.dataset.testid = "storm-marker";
       d.innerHTML = `<svg viewBox="0 0 34 34" width="34" height="34"><circle cx="17" cy="17" r="11" /><circle cx="17" cy="17" r="3" /><line x1="17" y1="0" x2="17" y2="6" /><line x1="17" y1="28" x2="17" y2="34" /><line x1="0" y1="17" x2="6" y2="17" /><line x1="28" y1="17" x2="34" y2="17" /></svg><span class="pin-label"></span>`;
       ghostMk.current = new Marker({ element: d }).setLngLat([ghost.lon, ghost.lat]).addTo(m);
     }
@@ -171,10 +189,22 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     const toa = (gis?.toaMostLikely?.features ?? []).filter((f) => Date.parse(String((f.properties as any)?.time)) <= ghost.time);
     src("tm-toa")?.setData(fc(toa));
     // Debug hook for headless checks (WebGL may not paint there): last position the map was given.
-    (window as any).__sliderMarker = { lng: ghostMk.current.getLngLat().lng, lat: ghostMk.current.getLngLat().lat, time: ghost.time, trailPoints: ghost.trail.length };
-    // Pan if the storm at the selected time is off screen.
-    if (!m.getBounds().contains([ghost.lon, ghost.lat])) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 400 });
-  }, [ready, ghost?.lat, ghost?.lon, ghost?.label, ghost?.uncertaintyMi, gis]);
+    (window as any).__sliderMarker = { lng: ghostMk.current.getLngLat().lng, lat: ghostMk.current.getLngLat().lat, time: ghost.time, trailPoints: ghost.trail.length, live: ghost.live,
+      stormIcons: document.querySelectorAll(".pin-storm-main").length };
+    // Faint "now" dot only when looking at another time.
+    src("storm-now")?.setData(fc(!ghost.live && storm ? [pt(storm.lon, storm.lat, {})] : []));
+    // Keep the storm in view: pan only once it leaves the central 70% of the map (no jitter while dragging).
+    const c = m.getContainer(), p = m.project([ghost.lon, ghost.lat]);
+    if (needsPan(p.x, p.y, c.clientWidth, c.clientHeight, 0.7)) m.easeTo({ center: [ghost.lon, ghost.lat], duration: 300 });
+  }, [ready, main?.lat, main?.lon, main?.label, main?.uncertaintyMi, main?.live, storm?.lat, storm?.lon, gis]);
+  useEffect(() => () => { ghostMk.current?.remove(); ghostMk.current = null; }, []);
+
+  // Landmarks (public places) from config/landmarks.json.
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  useEffect(() => { fetch("/api/landmarks").then((r) => r.json()).then((d) => setLandmarks(Array.isArray(d.landmarks) ? d.landmarks : [])).catch(() => {}); }, []);
+  useEffect(() => {
+    if (ready && map.current) (map.current.getSource("landmarks") as GeoJSONSource | undefined)?.setData(fc(landmarks.map((l) => pt(l.lon, l.lat, { name: l.name, kind: l.kind }))));
+  }, [ready, landmarks]);
 
   // Fit to home + storm + cone once per selected storm.
   useEffect(() => {
@@ -197,6 +227,7 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     vis("outages", layers.outages);
     HAZARD_LAYER_IDS.forEach((id) => vis(id, layers.tornado || layers.flood));
     vis("gauges", layers.gauges); vis("buoys", layers.buoys);
+    vis("landmarks-dot", layers.landmarks); vis("landmarks-label", layers.landmarks);
     vis("nightlights", layers.nightlights && !lowBandwidth);
     baseLayers.current.forEach((id) => { if (id !== "bg" && !/background/.test(id)) vis(id, !lowBandwidth); });
   }, [ready, layers, lowBandwidth]);
@@ -208,15 +239,20 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
     radarIds.current = syncRadarFrames(m, snap?.radar ?? null, layers.radar && !lowBandwidth);
     setFrame(radarIds.current.length - 1);
   }, [ready, snap?.radar, layers.radar, lowBandwidth]);
+  // Radar follows the slider: live = animated loop; past = the closest observed frame; future = no radar.
+  const frames = snap?.radar?.frames.slice(-RADAR_MAX_FRAMES) ?? [];
+  const radarPick = radarForTime(frames, main?.time ?? Date.now(), Date.now(), main?.live ?? true);
+  const radarLive = radarPick.mode === "live";
   useEffect(() => {
-    if (!playing || radarIds.current.length < 2) return;
+    if (!playing || !radarLive || radarIds.current.length < 2) return;
     const t = setInterval(() => setFrame((f) => (f + 1) % radarIds.current.length), 700);
     return () => clearInterval(t);
-  }, [playing, ready, snap?.radar]);
-  useEffect(() => { if (map.current && ready) showRadarFrame(map.current, radarIds.current, frame); }, [frame, ready]);
+  }, [playing, radarLive, ready, snap?.radar]);
+  const shownFrame = radarLive ? frame : radarPick.index;
+  useEffect(() => { if (map.current && ready) showRadarFrame(map.current, radarIds.current, shownFrame); }, [shownFrame, ready, snap?.radar, layers.radar]);
+  (window as any).__radar = { mode: radarPick.mode, index: shownFrame, frameTime: shownFrame >= 0 ? frames[shownFrame]?.time ?? null : null };
 
-  const frames = snap?.radar?.frames.slice(-7) ?? [];
-  const fTime = frames[frame]?.time ?? null;
+  const fTime = shownFrame >= 0 ? frames[shownFrame]?.time ?? null : null;
   const f = snap?.feeds ?? {};
   const st = (k: string) => (f[k] ? staleness(f[k].lastSuccess, f[k].pollSeconds) : "red");
 
@@ -234,12 +270,12 @@ export default function MapView({ snap, storm, gis, layers, onToggle, lowBandwid
       </div>
       {layers.radar && !lowBandwidth && frames.length > 0 && (
         <div className="radar-ctl">
-          <button className="btn" onClick={() => setPlaying((p) => !p)}>{playing ? "pause" : "play"}</button>
-          <span>Radar image from {fmtClockET(fTime)} ET</span>
-          <div className="frame-dots">{frames.map((_, i) => <i key={i} className={i === frame ? "on" : ""} />)}</div>
+          {radarLive && <button className="btn" onClick={() => setPlaying((p) => !p)}>{playing ? "pause" : "play"}</button>}
+          <span data-testid="radar-note">{radarLive ? <>Radar image from {fmtClockET(fTime)} ET (latest loop)</> : radarPick.note}</span>
+          {shownFrame >= 0 && <div className="frame-dots">{frames.map((_, i) => <i key={i} className={i === shownFrame ? "on" : ""} />)}</div>}
         </div>
       )}
-      {ghost && <div className="map-time" data-testid="map-time">Map shows: {new Date(ghost.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET</div>}
+      {main && <div className="map-time" data-testid="map-time">Map shows: {new Date(main.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET{main.live ? " (live)" : main.time > Date.now() ? " (forecast)" : " (past)"}</div>}
       <div className="map-legend">
         {ghost && <div><span style={{ color: "#ff5a4f" }}>━</span> Path from now to the selected time · <span style={{ color: "#ff5a4f" }}>◌</span> Likely error range at that time · <span style={{ color: "#e3a64a" }}>━</span> Where tropical-storm winds have likely arrived by then</div>}
         <div className={`stale-${st("nhcgis")}`}>{storm ? `${className(storm.classification)} ${storm.name}` : "No storm"} · NHC advisory {gis?.advisoryNumber ?? "—"} · {fmtET(gis?.issuance)}</div>

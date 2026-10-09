@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.0 (2026-10-09, in progress)
+
+### Part 1: map follows the time slider (hotfix)
+- **Root cause fixed:** the map drew the selected storm twice: a big fixed icon at the live position (from the snapshot) and a separate small slider marker. The radar loop also ignored the slider. Now the selected storm has **exactly one icon**, and it is always at the slider time (past track, live, or interpolated forecast). Its label shows the selected time, wind in mph and category. A faint "now" dot marks the live position when you look at another time.
+- **Radar follows the slider:** past times show the closest observed radar frame (up to ~2 hours back) with its time; older times say there is no radar; future times hide radar and say "Radar shows observed rain only. Not a forecast."
+- **Map keeps the storm in view** while dragging, panning only once it leaves the central 70% (no jitter).
+- **mph only** on map labels. Smaller legend so it does not cover the storm.
+- **Places layer** (on by default) from new `config/landmarks.json`: Tallahassee, Florida State University, Collegetown (coordinates checked against OpenStreetMap). New `/api/landmarks`.
+- `index.html` is served with `Cache-Control: no-cache` so updates show without a hard reload.
+- New unit tests (slider marker position, label, radar pick, pan rule, landmarks) and a headless browser check.
+
 ## v0.2.0 "Tornado night" (2026-10-09)
 
 - **Tornado watches and warnings on the map** (on by default): SPC tornado and severe thunderstorm watch polygons (via Iowa Environmental Mesonet `json/spcwatch.py`, since SPC's `ActiveWW.kml` returns 404) and NWS tornado warning polygons (api.weather.gov, official text verbatim; IEM `sbw.geojson` is a backup). Each shape is labelled in plain English with its expiry in ET; click for issuer, meaning and source.

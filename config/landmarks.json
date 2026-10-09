@@ -1,0 +1,8 @@
+{
+  "_about": "Public places drawn on the map for everyone (layer 'Places', on by default). Add your own: name, lat, lon (decimal degrees), kind = city | campus | neighborhood | place. Do NOT put your home here; your home goes in .env (HOME_LAT/HOME_LON) and never leaves your computer. Restart with npm start after editing. Coordinates below were checked against OpenStreetMap Nominatim on 2026-10-09.",
+  "landmarks": [
+    { "name": "Tallahassee", "lat": 30.4381, "lon": -84.2809, "kind": "city", "source": "OpenStreetMap (city of Tallahassee, FL)" },
+    { "name": "Florida State University", "lat": 30.4422, "lon": -84.2975, "kind": "campus", "source": "OpenStreetMap (FSU main campus, 600 W College Ave)" },
+    { "name": "Collegetown", "lat": 30.4364, "lon": -84.2971, "kind": "neighborhood", "source": "OpenStreetMap (FSU CollegeTown, Madison St / W Gaines St)" }
+  ]
+}

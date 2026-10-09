@@ -246,3 +246,6 @@ body { font-size: 14px; }
 .cone-note { font-size: 13px; color: var(--text, #e6e6e6); text-transform: none; letter-spacing: 0; }
 .btn.mode { font-weight: 700; }
 .hud-popup hr { border: 0; border-top: 1px solid #333; margin: 6px 0; }
+/* v0.3.0: keep the legend from covering the storm; one storm icon */
+.map-legend { max-width: min(420px, 45%); max-height: 38%; overflow-y: auto; opacity: 0.92; }
+.pin-storm-main { z-index: 5; }
