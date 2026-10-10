@@ -14,7 +14,7 @@ function Spark({ pts }: { pts: { v: number }[] }) {
 export default function RiversPanel({ snap, area }: { snap: Snapshot | null; area?: string }) {
   const g = snap?.gauges ?? [];
   return (
-    <Panel title={`River levels (USGS, ${g.length})`} feed={snap?.feeds.usgs} area={area}>
+    <Panel title={`River levels near you (${g.length})`} feed={snap?.feeds.usgs} area={area}>
       {g.length === 0 && <div className="dim">No gauge data yet.</div>}
       {g.map((x) => (
         <div key={x.id} className={`row gauge-row t-${x.trend}`} title={`${x.name} · USGS ${x.id} · ${fmtClockET(x.time)} ET`}>

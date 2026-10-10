@@ -103,7 +103,7 @@ export function radarViewAt(t: number, now: number, live: boolean, latestScan: s
   for (const s of fc.steps) if (Math.abs(Date.parse(s.validTime) - t) < Math.abs(Date.parse(best.validTime) - t)) best = s;
   const lead = Math.round((Date.parse(best.validTime) - now) / 60_000);
   return { kind: "forecast", url: hrrrRadarUrl(best.initTime, best.fMinute), frameTime: best.validTime, initTime: best.initTime, leadMin: lead,
-    label: `FORECAST radar for ${clock(best.validTime)} (about ${lead > 0 ? "+" : ""}${lead} min) · HRRR model run ${clock(best.initTime)} · may be wrong` };
+    label: `FORECAST radar for ${clock(best.validTime)} (about ${lead > 0 ? "+" : ""}${lead} min from now). A computer model's guess (NOAA HRRR, run at ${clock(best.initTime)}), not real radar; it may be wrong` };
 }
 
 /** Which of the three big view buttons is active for slider time t. */

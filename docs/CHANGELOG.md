@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.7.1 (2026-10-09, branch `preview`)
+
+Privacy, one clean alert bar, a much richer live feed, and a full clarity + visual QA pass. Details: `docs/UI-QA.md`.
+
+- **Privacy: no built-in location.** With no location set the app shows storms only, centers on the active storm and offers
+  "Set your location" (saved only in this browser). `HOME_DEFAULT` is gone. Landmarks stay as plain public places.
+- **One compact alert bar** with an ✕; dismissals are remembered per alert in this browser and new or upgraded alerts show
+  again. Tornado warnings keep the big red banner (✕ shrinks it into the bar). The safety line moved to the status bar and Help.
+- **Live feed:** refreshes every 60 s; exact ET time + "X min ago"; NEW tags; filter chips (Storm, Alerts, Reports, Power,
+  Weather); advisories with change since the last one; statement summaries with the full official text on expand; updated
+  and ended alerts; storm reports with plain places; airport peak gust and 3-hour pressure trend; utility outage change;
+  rising rivers.
+- **Plain words everywhere**, "Your risk: High" instead of "Threat RED", a "What this means for you" card, a first-visit help
+  card, a plain-language map key in the layer menu, one alert color palette, label collision fixes, attribution strip.
+
 ## v0.7.0 (2026-10-09, branch `preview`)
 
 The futuristic revamp, auto-update, and new "when does it hit me" tools. Shipped in small tested commits.
@@ -22,15 +37,14 @@ The futuristic revamp, auto-update, and new "when does it hit me" tools. Shipped
 
 ## v0.6.1 (2026-10-09, branch `preview`)
 
-Live radar that feels live, Change home, FSU default, and a real tap-on-map card.
+Live radar that feels live, Change home, and a real tap-on-map card.
 
 - **Tap card fix.** Root cause: there was no lookup for the tapped point at all; a tap only opened the popup of whatever big polygon was under it (a tornado watch or an outage region), and since one polygon covers the whole area, every tap showed the same card. Now each tap opens a card for that exact point from the new `/api/point`: OpenStreetMap place name, NWS gridpoint wind, gusts, rain chance and rain amount at the slider time, NWS alerts in effect there at that time, distance and direction to the storm at that time, nearest outages and the outage area. Every value has its source and time, or says "unavailable" (never another point's data). Debounced, the old request is cancelled on a new tap, cached per 0.01 deg.
 - **Close buttons everywhere.** Every map popup has a tap-sized ✕, Esc closes the topmost popup or the tap card, a tap on empty map closes the tap card, and the radar box can be hidden and reopened ("Radar ▸") like the map key.
 - **Live radar.** The server checks IEM for the newest NEXRAD scan every 60 s (was 5 min) and uses it as soon as its tiles exist; Live shows "Latest radar scan: HH:MM ET (X min ago)" with a pulsing LIVE dot and advances by itself.
 - **Smooth live radar (estimate)**, on by default with an off switch: the rain motion is measured from the last two scans (cross-correlation of two downsampled scans; NHC storm motion as fallback), and the latest scan slides along it until the next real scan arrives, then snaps to it. Labeled "Latest scan HH:MM ET + estimated motion (X min)". Covers ~1,100 mi around your home; turn it off for the full national radar.
-- **Change home.** Search or click the map; saved only in this browser, overrides `.env`; "Use Florida State University" and "Reset to default". Distance, threat, wind, alerts, outages, feed and the safety banner all follow it.
-- **Default home is Florida State University** when there is no browser home and no `HOME_LAT`/`HOME_LON` (`HOME_DEFAULT=off` restores storms-only mode).
-- New `/api/point` and `/api/radar-motion` routes, new tests (point card with two different points, cache per 0.01 deg, time filtering, unavailable instead of fallback; radar motion; FSU default). Opt-in live test: `LIVE=1 npx vitest run test/pointCard.test.ts` (Tallahassee vs Pensacola vs Miami).
+- **Change home.** Search or click the map; saved only in this browser, overrides `.env`; "Reset to default". Distance, threat, wind, alerts, outages, feed and the safety banner all follow it.
+- New `/api/point` and `/api/radar-motion` routes, new tests (point card with two different points, cache per 0.01 deg, time filtering, unavailable instead of fallback; radar motion). Opt-in live test: `LIVE=1 npx vitest run test/pointCard.test.ts` (Tallahassee vs Pensacola vs Miami).
 
 ## v0.6.0 (2026-10-09, branch `preview`)
 

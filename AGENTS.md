@@ -28,7 +28,7 @@ Health check: `curl http://localhost:8787/api/health` (code version: `/api/versi
 - `server/src/advisories.ts` + `sources/atcf.ts` + `sources/tcm.ts`: the unified UTC storm timeline (best track, official forecast, wind radii) and the write-once advisory store in `data/advisories/`. `web/src/stormTime.ts`: pure slider rules on that timeline (track by valid time, radii, cone circle, slider range). Never index the track by array position or use issue time as valid time.
 - `web/src/map/sliderView.ts`: pure rules for what the map shows at the slider time (radar frame pick, pan rule, storm label). The selected storm has exactly ONE map icon (`.pin-storm-main`), always at the slider-time position.
 - `server/src/sources/place.ts`: location search (`/api/geocode`), per-place NWS (`/api/place`) and nearby outages (`/api/outages`). PRIVACY RULE: these routes run with `logLevel: "warn"`, return generic errors, and never write the place to disk. The browser keeps the place in localStorage (`web/src/useSelectedPlace.ts`).
-- `server/src/config.ts`: env + `config/thresholds.json` + `config/landmarks.json` loading. Location only from `HOME_LAT`/`HOME_LON`.
+- `server/src/config.ts`: env + `config/thresholds.json` + `config/landmarks.json` loading. Location only from `HOME_LAT`/`HOME_LON` (or the browser's own saved location). No built-in default location, ever.
 - `server/src/poller.ts`: job list, scheduling, backoff, snapshot rebuild, derived per-storm fields.
 - `server/src/sources/*.ts`: one file per upstream source; each exports a URL builder and a `fetchX()` that returns `{ data, sourceTime }`.
 - `server/src/http.ts`: the only place that calls upstream `fetch` (User-Agent, ETag/Last-Modified, timeout, Retry-After).
@@ -45,7 +45,7 @@ Health check: `curl http://localhost:8787/api/health` (code version: `/api/versi
 5. **Keep last-known-good data.** A failed fetch marks the feed stale; it never blanks a panel.
 6. **Poll politely.** One server poller for all clients. Use `config/thresholds.json` intervals. Respect ETag/Last-Modified and Retry-After; exponential backoff to 30 min. All requests go through `http.ts`.
 7. **Free and open only.** No API keys in the repo, no paid services, no scraping behind logins, CAPTCHAs or embedded keys. An optional source may read the user's own key from `.env` (off by default).
-8. **The safety banner stays** on every layout. Distances and arrival times are labeled estimates.
+8. **The safety line stays** on every layout (footer status bar + the Help card; v0.7.1 moved it out of the top banner). Distances and arrival times are labeled estimates.
 9. **Localhost by default.** Don't change the default bind host.
 10. Plain, readable English in the UI: no unexplained abbreviations, units spelled out.
 

@@ -28,8 +28,9 @@ export function addStormLayers(m: MlMap) {
     "circle-radius": 3.5, "circle-color": ["step", ["coalesce", ["get", "maxWindKt"], 0], "#070909", 64, "#d23c34"],
     "circle-stroke-color": "#e4e8e2", "circle-stroke-width": 1 } });
   m.addLayer({ id: "fcst-labels", type: "symbol", source: "fcstPts", layout: {
-    "text-field": ["get", "etLabel"], "text-font": ["Noto Sans Regular"], "text-size": 10, "text-offset": [0.9, 0], "text-anchor": "left", "text-allow-overlap": false },
-    paint: { "text-color": "#e4e8e2", "text-halo-color": "#070909", "text-halo-width": 1.5 } });
+    "text-field": ["get", "etLabel"], "text-font": ["Noto Sans Regular"], "text-size": 12, "text-variable-anchor": ["left", "right", "top", "bottom"], "text-radial-offset": 0.8,
+    "text-allow-overlap": false, "text-optional": true, "text-padding": 4, "symbol-sort-key": 20 },
+    paint: { "text-color": "#e4e8e2", "text-halo-color": "#04070b", "text-halo-width": 2 } });
 }
 
 /** Push the selected storm's GIS into the map sources. Labels are converted to ET on the client. */

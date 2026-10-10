@@ -17,14 +17,15 @@ const ICON: Record<string, string> = {
   home: "M3 11l9-8 9 8M5 9v11h14V9",
   eye: "M12 2v4M12 18v4M2 12h4M18 12h4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5v1",
   layers: "M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5",
+  key: "M4 5h4v4H4zM4 15h4v4H4zM11 7h9M11 17h9",
 };
 export const Icon = ({ name, size = 20 }: { name: string; size?: number }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={ICON[name] ?? ICON.layers} /></svg>
 );
 
 /** v0.7 icon layer rail: one button per layer group, plus Standard/Hazards view and "center home". */
-export default function LayerMenu({ layers, onSet, mode, onMode, onHome, follow, onFollow }: {
-  follow?: boolean; onFollow?: (v: boolean) => void;
+export default function LayerMenu({ layers, onSet, mode, onMode, onHome, follow, onFollow, keyOpen, onKey }: {
+  follow?: boolean; onFollow?: (v: boolean) => void; keyOpen?: boolean; onKey?: () => void;
   layers: Record<LayerKey, boolean>; onSet: (keys: LayerKey[], on: boolean) => void;
   mode: ViewMode; onMode?: (m: ViewMode) => void; onHome?: () => void;
 }) {
@@ -33,9 +34,10 @@ export default function LayerMenu({ layers, onSet, mode, onMode, onHome, follow,
   return (
     <nav className={`layer-rail ${open ? "open" : ""}`} aria-label="Map layers" data-testid="layer-menu">
       <button className="lr-btn lr-head" onClick={toggleOpen} aria-expanded={open} title={open ? "Hide layer names" : "Show layer names"}><Icon name="layers" /><span>Layers</span></button>
+      {onKey && <button className={`lr-btn lr-key ${keyOpen ? "on" : ""}`} aria-pressed={!!keyOpen} onClick={onKey} title="Map key: what every color and symbol means" data-testid="map-key-toggle"><Icon name="key" /><span>Map key</span></button>}
       {onMode && <div className="lr-modes" role="group" aria-label="View">
-        <button className={mode === "standard" ? "on" : ""} aria-pressed={mode === "standard"} onClick={() => onMode("standard")}>Standard</button>
-        <button className={mode === "hazards" ? "on" : ""} aria-pressed={mode === "hazards"} onClick={() => onMode("hazards")} title="Only watches, warnings, cone and path">Hazards</button>
+        <button className={mode === "standard" ? "on" : ""} aria-pressed={mode === "standard"} onClick={() => onMode("standard")} title="Standard view: radar, alerts, outages and the storm">Standard</button>
+        <button className={mode === "hazards" ? "on" : ""} aria-pressed={mode === "hazards"} onClick={() => onMode("hazards")} title="Hazards view: only watches, warnings, the forecast cone and path">Hazards</button>
       </div>}
       {LAYER_GROUPS.map((g) => {
         const on = groupOn(layers, g.keys);

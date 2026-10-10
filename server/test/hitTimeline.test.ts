@@ -20,7 +20,7 @@ describe("when does it hit me", () => {
   it("alerts by hour, statements left out, NWS colors", () => {
     expect(rows[0].alerts.map((a) => a.event)).toEqual(["Tropical Storm Warning"]);
     expect(rows.find((r) => r.t >= Date.parse("2026-10-10T03:00:00Z"))!.alerts).toEqual([]);
-    expect(alertColor("Tornado Warning")).toBe("#FF0000");
+    expect(alertColor("Tornado Warning")).toBe("#ff2a2a"); // v0.7.1: same palette as the map
   });
   it("wind colors by impact band", () => { expect(windColor(40)).toBe("#ff922b"); expect(windColor(80)).toBe("#e14be8"); });
 });

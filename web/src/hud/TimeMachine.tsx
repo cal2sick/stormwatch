@@ -143,7 +143,7 @@ export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAd
           <div><small>Storm's top wind</small><b>{st.windMph ?? "—"} mph</b><em>{st.category}</em></div>
           <div><small>Storm is moving</small><b>{st.headingCardinal} {st.speedMph ? "at " + Math.round(st.speedMph) + " mph" : ""}</b></div>
         </div>
-        <p className="tm-text">{hasHome ? describe(st, storm.name, adv, home.name?.split(",")[0] ?? "home") : `${storm.name} center at ${fmtLat(st.lat)} ${fmtLon(st.lon)}, top wind ${st.windMph ?? "?"} mph. Set your location in .env to see distance, winds and alerts for your place.`}</p>
+        <p className="tm-text">{hasHome ? describe(st, storm.name, adv, home.name?.split(",")[0] ?? "home") : `${storm.name} center at ${fmtLat(st.lat)} ${fmtLon(st.lon)}, top wind ${st.windMph ?? "?"} mph. Set your location (top of this column) to see distance, winds and alerts for it.`}</p>
         {hasHome && <><div className="tm-section">
           <h4>Wind at {home.name?.split(",")[0] || "your home"} at this time</h4>
           {homeHour ? <p className="tm-big"><b>{homeHour.windMph ?? "—"} mph</b> steady wind from the {homeHour.windDir ?? "—"}, gusts up to <b>{homeHour.gustMph ?? "—"} mph</b>. {homeHour.shortForecast}{homeHour.pop != null ? `, ${homeHour.pop}% chance of rain` : ""}.</p>
@@ -168,7 +168,7 @@ export default function TimeMachine({ snap, storm, gis, tl, adv: pickedAdv, onAd
         <button className="btn tick" onClick={() => { setPlaying(false); setPicked(Math.round(cpa.time / STEP) * STEP); }}>show</button></p>}
       {hasHome && <p className="tm-text">Your home is {storm.inCone ? "inside" : "outside"} the National Hurricane Center's 5-day forecast cone (advisory {adv ?? "?"}).</p>}
       <p className="tm-text cone-note">{CONE_TEXT}</p>
-      <p className="tm-src">Times are Eastern (ET), like NHC advisories. West of the Apalachicola River (most of the Panhandle) clocks run on Central time, 1 hour earlier. Track: NHC best track (past) and {isLatest ? "the latest official forecast" : `forecast ${adv}`}, valid times in UTC, filled in along great circles.{coneAt ? ` Ring: time-sliced cone circle, NHC 2026 radii (${Math.round(coneAt.tau)} h into the forecast, about ${Math.round(uncertaintyMi)} miles).` : ""}</p>
+      <p className="tm-src">Times are Eastern (ET), like National Hurricane Center advisories. West of the Apalachicola River (most of the Panhandle) clocks run on Central time, 1 hour earlier. Path: where the storm has been (National Hurricane Center) and {isLatest ? "the latest official forecast" : `forecast ${adv}`}, with positions filled in between forecast points.{coneAt ? ` The dashed ring is the likely area for the center at that time (${Math.round(coneAt.tau)} hours into the forecast, about ${Math.round(uncertaintyMi)} miles across).` : ""}</p>
       <p className="tm-warn">Positions come from the National Hurricane Center forecast and are filled in between its forecast points. The further ahead, the less certain (the dashed ring on the map shows the typical error). Official forecasts and alerts always win.</p>
     </div>
   );

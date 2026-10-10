@@ -38,6 +38,8 @@ import { useBrowserHome } from "./useHome";
 import { distanceMi } from "./geo";
 import { useAutoReload } from "./useAutoReload";
 import HitTimeline from "./hud/HitTimeline";
+import NowCard from "./hud/NowCard";
+import { HelpButton, HelpCard, useHelp } from "./hud/Help";
 
 function usePref<T>(key: string, init: T) {
   const [v, setV] = useState<T>(() => { try { const s = localStorage.getItem("stormwatch:" + key); return s ? { ...init, ...JSON.parse(s) } : init; } catch { return init; } });
@@ -48,7 +50,7 @@ function usePref<T>(key: string, init: T) {
 export default function App() {
   const { snap: rawSnap, connected } = useSnapshot();
   const { updatingTo } = useAutoReload();
-  // v0.6.1: a home chosen in this browser ("Change home") overrides .env and the FSU default everywhere in the UI.
+  // A location chosen in this browser ("Set your location") overrides .env everywhere in the UI. No built-in default.
   const [browserHome, setBrowserHome] = useBrowserHome();
   const [pickingHome, setPickingHome] = useState(false);
   const snap = rawSnap && browserHome ? { ...rawSnap, home: { name: browserHome.name.split(",")[0], lat: browserHome.lat, lon: browserHome.lon, configured: true, source: "browser" as const },
@@ -76,8 +78,10 @@ export default function App() {
   const timelines = useTimeline(snap?.gisVersion);
   const [advPick, setAdvPick] = useState<string | null>(null);
   useAlerts(snap, prefs.voice, prefs.notify);
+  const help = useHelp();
+  const [toastX, setToastX] = useState(false);
   const { place, point, setPlace, weather: placeWx, outages: placeOut, outageErr, evac, evacErr } = useSelectedPlace(browserHome);
-  // Readouts (distance, wind at the place, alerts) use the searched place, else the browser home; else the server home (.env or FSU).
+  // Readouts (distance, wind at the place, alerts) use the searched place, else the browser location, else the .env location.
   const readSnap = snap && point ? { ...snap, home: { name: point.name.split(",")[0], lat: point.lat, lon: point.lon, configured: true },
     forecast: placeWx?.forecast ?? null, alerts: placeWx?.alerts ?? [] } : snap;
   const hazardTime = tm?.time ?? now;
@@ -111,10 +115,6 @@ export default function App() {
 
   return (
     <div className={`hud lvl-${level.replace(" ", "-").toLowerCase()}`}>
-      <div className="banner" role="note">For information only. Follow your local National Weather Service office and emergency management. Evacuation orders override this app.</div>
-      {snap && !snap.home.configured && <div className="banner setup" role="alert">
-        No location set, so the map shows storms only. To get distance, local alerts, winds and a threat level for your place: copy <code>.env.example</code> to <code>.env</code>, set <code>HOME_LAT</code> and <code>HOME_LON</code> (decimal degrees, e.g. from a map app), then restart with <code>npm start</code>. Your location stays on your computer.
-      </div>}
       <HazardBanner snap={snap && browserHome ? { ...snap, alerts: homeAlerts ?? [], homeHazardIds: [] } : snap} now={now} />
       <header className="topbar">
         <button className="side-toggle" onClick={() => setUi((u) => ({ ...u, side: !u.side }))} aria-expanded={ui.side} aria-label={ui.side ? "Hide side panel" : "Show side panel"} title={ui.side ? "Hide side panel" : "Show side panel"}>
@@ -124,60 +124,67 @@ export default function App() {
           <div className="logo" aria-hidden="true"><svg viewBox="-20 -20 40 40" width="30" height="30"><path d="M6 0C6-10-2-16-12-16" /><path d="M-6 0C-6 10 2 16 12 16" /><circle r="6.5" /></svg></div>
           <div>
             <div className="title">Stormwatch</div>
-            <div className="subtitle">{!snap ? "Connecting…" : snap.home.configured ? `Home: ${snap.home.name}` : "No location set"}</div>
+            <div className="subtitle">{!snap ? "Connecting…" : snap.home.configured ? `Your location: ${snap.home.name}` : "Live hurricane map"}</div>
           </div>
         </div>
         {(snap?.storms.length ?? 0) > 1 && (
           <div className="storm-tabs" role="group" aria-label="Storms">
-            {snap!.storms.slice(0, 4).map((s) => <button key={s.id} className={`btn ${s.id === storm?.id ? "on" : ""}`} onClick={() => setStormId(s.id)}><b>{s.name}</b>{snap!.home.configured ? <span className="num"> {Math.round(s.distanceMi)} mi</span> : ""}</button>)}
+            {snap!.storms.slice(0, 4).map((s) => <button key={s.id} className={`btn ${s.id === storm?.id ? "on" : ""}`} onClick={() => setStormId(s.id)}><b>{s.name}</b>{snap!.home.configured ? <span className="num"> · {Math.round(s.distanceMi).toLocaleString()} mi<span className="st-from"> from home</span></span> : ""}</button>)}
           </div>
         )}
         <ThreatLadder snap={threatView} />
         <div className="top-right">
           <div className="toggles">
             <span className={`live ${connected ? "on" : ""}`}><i className="live-led" />{connected ? "Live" : "Reconnecting"}</span>
-            <button className={`btn ${prefs.voice ? "on" : ""}`} onClick={toggleVoice} title="Speak new warnings (tap to enable)">Voice</button>
-            <button className={`btn ${prefs.notify ? "on" : ""}`} onClick={toggleNotify} title="Browser notifications">Alerts</button>
-            <button className={`btn ${prefs.lowBw ? "on" : ""}`} onClick={() => setPrefs((p) => ({ ...p, lowBw: !p.lowBw }))} title="Stop radar and map tiles to save data">Low data</button>
-            <button className={`btn ${more ? "on" : ""}`} onClick={() => setMore((v) => !v)} title="Rivers, tides, buoys, power, event log, links">{more ? "Fewer panels" : "More panels"}</button>
+            <details className="opt-menu" data-testid="options">
+              <summary className="btn" title="Options: read alerts aloud, notifications, low-data mode">Options{(prefs.voice || prefs.notify || prefs.lowBw) ? <span className="opt-dot" aria-label="some options on" /> : null} ▾</summary>
+              <div className="opt-list">
+                <button className={`btn opt ${prefs.voice ? "on" : ""}`} onClick={toggleVoice} title="Read new warnings out loud on this computer">Read alerts aloud</button>
+                <button className={`btn opt ${prefs.notify ? "on" : ""}`} onClick={toggleNotify} title="Pop-up notifications on this computer for new warnings">Notifications</button>
+                <button className={`btn opt ${prefs.lowBw ? "on" : ""}`} onClick={() => setPrefs((p) => ({ ...p, lowBw: !p.lowBw }))} title="Low-data mode: stops radar and satellite images to save mobile data">Low-data mode</button>
+              </div>
+            </details>
+            <button className={`btn ${more ? "on" : ""}`} onClick={() => setMore((v) => !v)} title="More panels: situation summary, hourly forecast, power, rivers, tides, buoys, event log, links">{more ? "Fewer panels" : "More panels"}</button>
           </div>
+          <HelpButton onClick={help.show} />
           <div className="clock num">{new Date(now).toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", second: "2-digit" })}<small> ET</small></div>
         </div>
       </header>
       <main className={`stage ${ui.side ? "side-open" : "side-closed"} ${more ? "more" : ""}`}>
         <aside className="col left">
-          <Panel title="Your home" source="saved only in this browser; default Florida State University" time={null} area="home">
-            <HomePanel home={snap?.home.configured ? snap.home : null} source={homeSource} browserHome={browserHome} picking={pickingHome} onPicking={setPickingHome}
+          <NowCard snap={readSnap} threat={threatView} storm={storm} now={now} sliderTime={tm?.time ?? null} live={!tm || tm.live} />
+          <Panel title="Your location" source="your choice, saved only in this browser" time={null} area="home">
+            <HomePanel loading={!snap} home={snap?.home.configured ? snap.home : null} source={homeSource} browserHome={browserHome} picking={pickingHome} onPicking={setPickingHome}
               onSet={(p) => { setBrowserHome(p); setPickingHome(false); }} />
           </Panel>
-          {readSnap?.home.configured && <Panel title={`When does it hit ${readSnap.home.name.split(",")[0]}?`} feed={readSnap === snap ? snap?.feeds.forecast : undefined} source="NWS hourly forecast + NWS alerts for this place" time={readSnap.forecast?.updateTime ?? null} area="hit">
+          {readSnap?.home.configured && <Panel title={`When does it hit ${readSnap.home.name.split(",")[0]}?`} feed={readSnap === snap ? snap?.feeds.forecast : undefined} source="National Weather Service hourly forecast and alerts" time={readSnap.forecast?.updateTime ?? null} area="hit">
             <HitTimeline point={{ lat: readSnap.home.lat, lon: readSnap.home.lon }} hourly={readSnap.forecast?.hourly ?? []} alerts={readSnap.alerts ?? []} now={now} place={readSnap.home.name.split(",")[0]}
               selected={tm && !tm.live ? tm.time : null} onPick={(t) => setJump((j) => ({ t: t + 30 * 60_000 > now && t <= now ? null : t, seq: j.seq + 1 }))} />
           </Panel>}
-          <Panel title={storm ? `${storm.name} at the selected time` : "Storm at the selected time"} feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast, filled in between forecast points" area="timemachine">
+          <Panel title={storm ? `${storm.name} at the selected time` : "Storm at the selected time"} feed={snap?.feeds.nhcgis ?? snap?.feeds.nhc} source="National Hurricane Center forecast" area="timemachine">
             <TimeMachine snap={readSnap} storm={storm} gis={storm ? gis[storm.id] : undefined} tl={tl} adv={advPick ? pickedAdv : null} onAdv={setAdvPick} now={now} onState={setTm} jump={jump} dock={dockEl} />
           </Panel>
-          <Panel title={`Latest for ${feedPoint?.name ?? "your area"}`} source="NWS alerts, statements, observations and storm reports; NHC; utility outage feed" time={null} area="localfeed" className="lf-panel">
+          <Panel title={`Latest for ${feedPoint?.name ?? "your area"}`} source="National Weather Service, National Hurricane Center, utility outage map" time={null} area="localfeed" className="lf-panel">
             <LocalFeed point={feedPoint} snap={snap} storm={storm} now={now} />
           </Panel>
-          <Panel title="Look up a place" source="US Census Geocoder, OpenStreetMap Nominatim fallback" time={null} area="place">
+          <Panel title="Look up a place" source="U.S. Census address search (OpenStreetMap as backup)" time={null} area="place">
             <LocationSearch place={place} onPick={setPlace} />
           </Panel>
           {point && <Panel title={`Evacuation zone for ${point.name.split(",")[0]}`} source="Florida Division of Emergency Management (Know Your Zone)" time={evac?.checked ?? null} area="place-evac">
             <EvacZone data={evac} err={evacErr} />
           </Panel>}
-          {point && <Panel title={`Power outages near ${point.name.split(",")[0]}`} source="utility outage feeds (config/outage-sources.json), ORNL ODIN, EIA-861" time={placeOut?.checked ?? null} area="place-outages">
+          {point && <Panel title={`Power outages near ${point.name.split(",")[0]}`} source="utility outage maps, Oak Ridge National Laboratory, U.S. Energy Information Administration" time={placeOut?.checked ?? null} area="place-outages">
             <OutageSummary areas={outageAreas} point={point} placeName={point.name.split(",")[0]} fips={placeOut?.county?.fips ?? null} now={now} />
             <OutagesNearby data={placeOut} err={outageErr} />
           </Panel>}
-          <Panel title={point ? `Threat level for ${point.name.split(",")[0]} and why` : "Your threat level and why"} source="rules in config/thresholds.json over NWS + NHC" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
+          <Panel title={point ? `Risk level for ${point.name.split(",")[0]} and why` : "Your risk level and why"} source="Stormwatch rules using National Weather Service and National Hurricane Center data" time={snap?.generatedAt ?? null} area="threat" className="threat-panel">
             <ThreatLadder snap={threatView} variant="full" />
           </Panel>
           <LocalObsPanel snap={snap} area="obs" />
           <AlertList snap={readSnap} area="alerts" />
           <HazardsPanel snap={snap} time={hazardTime} area="hazards" />
           {more && <VitalsPanel snap={snap} storm={storm} now={now} area="vitals" />}
-          {more && snap?.home.configured && <Panel title="Storm position around your home" feed={snap?.feeds.nhc} source="NHC position + forecast points" area="scope">
+          {more && snap?.home.configured && <Panel title="Storm position around your home" feed={snap?.feeds.nhc} source="National Hurricane Center position and forecast" area="scope">
             <RangeScope snap={snap} storm={storm} gis={storm ? gis[storm.id] : undefined} />
           </Panel>}
         </aside>
@@ -197,7 +204,7 @@ export default function App() {
           </div>
         </section>
         {more && <aside className="col right">
-          <SitrepReadout snap={snap} storm={storm} onSpeak={speak} area="sitrep" />
+          <SitrepReadout snap={readSnap && threatView ? { ...readSnap, threat: threatView.threat } : readSnap} storm={storm} onSpeak={speak} area="sitrep" />
           <HourlyStrip snap={snap} area="hourly" />
           <PowerPanel snap={snap} area="power" areas={outageAreas} now={now} />
           <RiversPanel snap={snap} area="rivers" />
@@ -208,7 +215,8 @@ export default function App() {
         </aside>}
       </main>
       <FeedTicker snap={snap} now={now} />
-      {updatingTo && <div className="update-toast" role="status">Updated to {updatingTo}, reloading…</div>}
+      {help.open && <><div className="help-shade" onClick={help.close} aria-hidden="true" /><HelpCard onClose={help.close} /></>}
+      {updatingTo && !toastX && <div className="update-toast" role="status">Updated to {updatingTo}, reloading… <button className="x-close sm" aria-label="Close" onClick={() => setToastX(true)}>✕</button></div>}
     </div>
   );
 }

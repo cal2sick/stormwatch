@@ -25,7 +25,7 @@ describe("radar view at the slider time (v0.5 fix: never blank 10 min from now)"
   it("10 minutes forward = forecast radar (HRRR), labeled forecast with model run", () => {
     const v = radarViewAt(NOW + 10 * M, NOW, false, LATEST, FC);
     expect(v.kind).toBe("forecast");
-    if (v.kind === "forecast") { expect(v.url).toBe(hrrrRadarUrl(FC.initTime, 170)); expect(v.url).toContain("hrrr::REFD-F0170-202610091900/"); expect(v.label).toMatch(/FORECAST.*HRRR.*may be wrong/); }
+    if (v.kind === "forecast") { expect(v.url).toBe(hrrrRadarUrl(FC.initTime, 170)); expect(v.url).toContain("hrrr::REFD-F0170-202610091900/"); expect(v.label).toMatch(/FORECAST.*not real radar.*HRRR.*may be wrong|FORECAST.*HRRR.*may be wrong/); }
   });
   it("+3 h picks the +180 step; beyond 3 h hides radar with a reason", () => {
     const v = radarViewAt(NOW + 175 * M, NOW, false, LATEST, FC); expect(v.kind === "forecast" && v.leadMin).toBe(180);

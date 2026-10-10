@@ -10,8 +10,8 @@ export default function AlertList({ snap, area }: { snap: Snapshot | null; area?
   const [open, setOpen] = useState<string | null>(null);
   const alerts = snap?.alerts ?? [];
   return (
-    <Panel title={`Weather alerts for your home (${alerts.length})`} feed={snap?.feeds.nws} source="api.weather.gov alerts" area={area}>
-      {snap && !snap.home.configured && <div className="dim">Set HOME_LAT and HOME_LON in .env to see National Weather Service alerts for your location.</div>}
+    <Panel title={`Weather alerts for your home (${alerts.length})`} feed={snap?.feeds.nws} source="National Weather Service alerts" area={area}>
+      {snap && !snap.home.configured && <div className="dim">Set your location (top of the left column) to see National Weather Service alerts for it.</div>}
       {snap?.home.configured && alerts.length === 0 && <div className="dim">No active alerts for your point.</div>}
       {alerts.map((a) => (
         <div key={a.id} className={`alert ${sevClass(a.event, a.severity)}`} onClick={() => setOpen(open === a.id ? null : a.id)}>

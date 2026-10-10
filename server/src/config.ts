@@ -12,8 +12,6 @@ export const DATA_DIR = path.join(root, "data");
 
 /** `configured` is false when HOME_LAT / HOME_LON are not set; lat/lon are then only a neutral map center. */
 export interface Home { name: string; lat: number; lon: number; configured: boolean; source?: "env" | "default" }
-/** v0.6.1 default home for everyone: Florida State University (main campus, from config/landmarks.json). */
-export const DEFAULT_HOME = { name: "Florida State University", lat: 30.4422, lon: -84.2975 };
 /** Neutral map center (open Atlantic) used only to center the map when no location is set. Never treated as a home. */
 export const NEUTRAL_CENTER = { lat: 25, lon: -70 };
 export type Thresholds = {
@@ -31,17 +29,15 @@ export type Thresholds = {
   [k: string]: unknown;
 };
 
-// Home: HOME_LAT / HOME_LON / HOME_NAME in your local .env (git-ignored) if set; otherwise Florida State University.
-// In the browser, "Change home" (saved only in that browser) overrides both. HOME_DEFAULT=off restores the old
-// "no location set" behavior (storms only).
+// Location: HOME_LAT / HOME_LON / HOME_NAME in your local .env (git-ignored) if set; otherwise NO location
+// (storms only, map centered on the active storm). In the browser, "Set your location" (saved only in that browser)
+// overrides .env. v0.7.1 privacy: there is no built-in default location.
 export function loadHome(): Home {
   const lat = Number(process.env.HOME_LAT), lon = Number(process.env.HOME_LON);
   const envOk = !!process.env.HOME_LAT && !!process.env.HOME_LON && Number.isFinite(lat) && Number.isFinite(lon)
     && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
   if (envOk) return { name: process.env.HOME_NAME || "Home", lat, lon, configured: true, source: "env" };
-  if ((process.env.HOME_DEFAULT ?? "").toLowerCase() === "off") return { name: "No location set", ...NEUTRAL_CENTER, configured: false };
-  const fsu = loadLandmarks().find((l) => l.name === DEFAULT_HOME.name) ?? DEFAULT_HOME;
-  return { name: DEFAULT_HOME.name, lat: fsu.lat, lon: fsu.lon, configured: true, source: "default" };
+  return { name: "Your location", ...NEUTRAL_CENTER, configured: false };
 }
 export const homeConfigured = () => loadHome().configured;
 export function loadThresholds(): Thresholds {

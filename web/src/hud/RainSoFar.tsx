@@ -24,9 +24,9 @@ export default function RainSoFar({ lat, lon, compact = false }: { lat: number; 
     <span>{label}</span><b className="num">{!d ? "…" : t?.inches == null ? "n/a" : t.inches.toFixed(2)}<small>{t?.inches != null ? " in" : ""}</small></b></div>;
   return (
     <div className={`rain-sofar ${compact ? "compact" : ""}`} data-testid="rain-sofar">
-      <div className="rs-title">Rain so far (observed)</div>
+      <div className="rs-title">Rain so far (measured)</div>
       {err ? <p className="tm-text">Rain totals are not available right now.</p> : <div className="rs-grid">{cell("Last hour", d?.p1h)}{cell("24 hours", d?.p24h)}{cell("72 hours", d?.p72h)}</div>}
-      {d && <small className="tc-src">NOAA MRMS radar + gauges via Iowa Environmental Mesonet · through {fmtET(d.p24h.end ?? d.p1h.end)}</small>}
+      {d && <small className="tc-src">NOAA radar and rain gauges (via Iowa Environmental Mesonet) · through {fmtET(d.p24h.end ?? d.p1h.end)}</small>}
     </div>
   );
 }

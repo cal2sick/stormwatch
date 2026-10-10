@@ -116,7 +116,7 @@ export function describe(s: TrackState, stormName: string, advisory: string | nu
   if (s.outOfRange === "before") src = `before the first forecast point (${fmtTime(s.before!.time)})`;
   else if (s.outOfRange === "after") src = `beyond the last forecast point (${fmtTime(s.after!.time)}) — no forecast`;
   else if (s.exact) src = `exact ${tauLabel(s.exact)}`;
-  else src = `interpolated ${Math.round(s.frac * 100)}% between ${tauLabel(s.before!)} and ${tauLabel(s.after!)}`;
-  return `${fmtTime(s.time)}: ${stormName} center ~${fmtLat(s.lat)} ${fmtLon(s.lon)}, ~${Math.round(s.distanceMi)} mi ${s.bearingFromHomeCardinal} of ${homeName}, ${wind}${motion}. Source: NHC advisory ${advisory ?? "?"}, ${src}.`;
+  else src = `estimated ${Math.round(s.frac * 100)}% of the way between ${tauLabel(s.before!)} and ${tauLabel(s.after!)}`;
+  return `${fmtTime(s.time)}: ${stormName} center ~${fmtLat(s.lat)} ${fmtLon(s.lon)}, ~${Math.round(s.distanceMi)} mi ${s.bearingFromHomeCardinal} of ${homeName}, ${wind}${motion}. Source: National Hurricane Center advisory ${advisory ?? "?"}, ${src}.`;
 }
 export { fmtTime };

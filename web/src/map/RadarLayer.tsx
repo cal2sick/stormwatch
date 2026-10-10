@@ -3,7 +3,7 @@
 // The previous frame stays on screen until then, so scrubbing never shows an empty map.
 import type { Map as MlMap } from "maplibre-gl";
 
-export const IEM_ATTR = 'Radar: NOAA NEXRAD and NOAA HRRR model via <a href="https://mesonet.agron.iastate.edu/" target="_blank">Iowa Environmental Mesonet</a>';
+export const IEM_ATTR = 'Radar: NOAA via <a href="https://mesonet.agron.iastate.edu/" target="_blank">Iowa Environmental Mesonet</a>';
 const RV_ATTR = '<a href="https://www.rainviewer.com/" target="_blank">RainViewer</a>';
 const OPACITY = 0.62;
 const FADE_MS = 250;

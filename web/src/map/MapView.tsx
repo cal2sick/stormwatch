@@ -13,7 +13,7 @@ import { catColor } from "../format";
 import { addHazardLayers, HAZARD_LAYER_IDS, updateHazardLayers } from "./HazardLayer";
 import { activeAt, CONE_TEXT, FLOOD_KINDS, HAZARD_HEX, HAZARD_NAME, hazardFeatures, TORNADO_KINDS, untilET } from "../hazards";
 import { circle } from "../timeline";
-import { className, ktToMph } from "../format";
+import { className, compassWords, ktToMph } from "../format";
 import { goesTimeAt, hrrrRadarUrl, iemRadarUrl, needsPan, phaseAt, radarForTime, radarViewAt, stormLabel, type Phase } from "./sliderView";
 import { quadRing, type RadiiState } from "../stormTime";
 import { fmtPct, OUTAGE_FILL_EXPR, type OutageAreas } from "../outages";
@@ -94,7 +94,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
       let style: StyleSpecification | string = BARE;
       try { const r = await fetch(OFM_STYLE, { signal: AbortSignal.timeout(6000) }); if (r.ok) style = await r.json(); } catch { /* offline */ }
       if (cancelled || !el.current) return;
-      const m = new maplibregl.Map({ container: el.current, style, center: [-85.5, 29], zoom: 5, attributionControl: { compact: true } });
+      const m = new maplibregl.Map({ container: el.current, style, center: [-85.5, 29], zoom: 5, attributionControl: { compact: false } });
       map.current = m; (window as any).__swMap = m; // debug hook for headless checks
       (window as any).__map = m; // debug hook for headless checks
       m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
@@ -205,8 +205,15 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
           const areas = [...new Set((areaL.length ? m.queryRenderedFeatures(e.point, { layers: areaL }) : []).map((f) => {
             const d = document.createElement("div"); d.innerHTML = String((f.properties as any)?.popup ?? ""); d.querySelectorAll("br").forEach((b) => b.replaceWith(" · "));
             return (d.textContent ?? "").replace(/\s+/g, " ").trim(); }).filter(Boolean))];
+          setKeyOpen(false);
           setTap((t) => ({ lat: Math.round(e.lngLat.lat * 1e4) / 1e4, lon: Math.round(e.lngLat.lng * 1e4) / 1e4, seq: (t?.seq ?? 0) + 1, hazards: titles, areas }));
         });
+        // v0.7.1 label collision: invisible stand-ins for the HTML home pin and the storm icon + its label.
+        // They sit on top (placed first), so hazard, forecast-point and place labels move away or hide instead of overlapping them.
+        m.addSource("collide", { type: "geojson", data: EMPTY });
+        m.addLayer({ id: "collide", type: "symbol", source: "collide", layout: {
+          "text-field": ["get", "t"], "text-font": ["Noto Sans Regular"], "text-size": ["get", "size"], "text-anchor": ["get", "anchor"] as any, "text-offset": ["get", "off"] as any,
+          "text-allow-overlap": true, "text-ignore-placement": false, "text-padding": 4, "text-max-width": 60 }, paint: { "text-opacity": 0 } });
         setReady(true);
       });
     })();
@@ -230,9 +237,9 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
     if (!ready || !m || !snap) return;
     const set = (id: string, d: GeoJSON.FeatureCollection) => (m.getSource(id) as GeoJSONSource | undefined)?.setData(d);
     set("outages", fc((snap.power.local?.outages ?? []).map((o) => pt(o.lon, o.lat, { customers: o.customers,
-      popup: `<b>POWER OUTAGE</b><br>${o.customers} customers · ${o.status ?? ""}<br>Cause: ${o.cause ?? "—"}<br>Off: ${fmtET(o.off)}<br>Estimated fix: ${fmtET(o.etr)}${o.etrPassed ? " <b class='red'>(PASSED)</b>" : ""}<br>${o.distanceMi} mi from you` }))));
+      popup: `<b>Power outage</b><br>${o.customers} customers out · ${o.status ?? ""}<br>Cause: ${o.cause ?? "not given"}<br>Out since: ${fmtET(o.off)}<br>Estimated restore: ${fmtET(o.etr)}${o.etrPassed ? " <b class='red'>(time has passed)</b>" : ""}<br>${o.distanceMi} miles from your location` }))));
     set("gauges", fc(snap.gauges.map((g) => pt(g.lon, g.lat, { trend: g.trend,
-      popup: `<b>${g.name}</b><br>Stage ${g.stageFt ?? "—"} ft · ${g.trend} (${g.change3hFt ?? "?"} ft / 3 h)<br>USGS ${g.id} · ${fmtET(g.time)}` }))));
+      popup: `<b>${g.name}</b><br>River level ${g.stageFt ?? "—"} ft, ${g.trend} (${g.change3hFt ?? "?"} ft in the last 3 hours)<br>U.S. Geological Survey gauge ${g.id} · ${fmtET(g.time)}` }))));
     set("tides", fc((snap.tides ?? []).filter((x) => isFinite(x.lat) && isFinite(x.lon)).map((x) => pt(x.lon, x.lat, { above: x.aboveForecastFt ?? 0,
       popup: `<b>${x.name}</b> (NOAA tide gauge ${x.id})<br>Water ${x.levelFtMhhw} ft vs normal high tide · ${x.aboveForecastFt ?? "—"} ft vs predicted tide<br>${fmtET(x.time)}` }))));
     const escH = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -240,7 +247,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
     set("cameras", fc((snap.cameras ?? []).map((c) => pt(c.lon, c.lat, {
       popup: `<b>${escH(c.name)}</b><br><a href="${httpsOnly(c.pageUrl)}" target="_blank" rel="noreferrer"><img src="${httpsOnly(c.imageUrl)}" alt="Latest camera image" style="width:300px;max-width:100%;display:block;margin:4px 0" loading="lazy"></a>Latest image ${fmtET(c.time)} · ${escH(c.source)}` }))));
     set("buoys", fc(snap.buoys.map((b) => pt(b.lon, b.lat, {
-      popup: `<b>NDBC ${b.id}</b> ${b.name}<br>Wind ${ktToMph(b.windKt) ?? "—"} mph, gusts ${ktToMph(b.gustKt) ?? "—"} mph · ${b.pressureMb ?? "—"} mb · seas ${b.waveFt ?? "—"} ft<br>${b.distanceToStormMi} mi from storm · ${fmtET(b.time)}` }))));
+      popup: `<b>NOAA buoy ${b.id}</b> ${b.name}<br>Wind ${ktToMph(b.windKt) ?? "—"} mph, gusts ${ktToMph(b.gustKt) ?? "—"} mph · pressure ${b.pressureMb ?? "—"} millibars · waves ${b.waveFt ?? "—"} ft<br>${b.distanceToStormMi} miles from the storm · ${fmtET(b.time)}` }))));
   }, [ready, snap]);
 
   // v0.7: the map's free area is what the floating cards leave uncovered; center, fit and fly into that area.
@@ -267,6 +274,9 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
   const onFollowRef = useRef(onFollowEye); onFollowRef.current = onFollowEye;
   // A manual drag ends Follow the eye (so it never fights the user).
   useEffect(() => { const m = map.current; if (!ready || !m) return; const h = (e: any) => { if (e.originalEvent && followRef.current) onFollowRef.current?.(false); }; m.on("dragstart", h); return () => { m.off("dragstart", h); }; }, [ready]);
+  // v0.7.1 collision stand-ins (see the "collide" layer): home pin + "HOME" label, storm icon + its label.
+  const collide = useRef<{ home: GeoJSON.Feature[]; storm: GeoJSON.Feature[] }>({ home: [], storm: [] });
+  const pushCollide = () => (map.current?.getSource("collide") as GeoJSONSource | undefined)?.setData(fc([...collide.current.home, ...collide.current.storm]));
   // Markers: home + storms.
   useEffect(() => {
     const m = map.current;
@@ -279,6 +289,8 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
       ...snap.storms.filter((s) => s.id !== storm?.id).map((s) => new Marker({ element: mk("pin-storm pin-other",
         `<svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="6" /><line x1="12" y1="0" x2="12" y2="24" /><line x1="0" y1="12" x2="24" y2="12" /></svg><span class="pin-label">${s.name} now · ${s.category} · ${ktToMph(s.intensityKt) ?? "?"} mph</span>`) }).setLngLat([s.lon, s.lat]).addTo(m)),
     ];
+    collide.current.home = snap.home.configured ? [pt(snap.home.lon, snap.home.lat, { t: "WWWWWWWW", size: 15, anchor: "left", off: [-1.3, 0] })] : [];
+    pushCollide();
   }, [ready, snap?.home.lat, snap?.home.lon, snap?.storms, storm?.id]);
 
   // Forecast-time marker (time slider). This is the main storm marker: it sits where the NHC
@@ -307,6 +319,9 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
     }
     ghostMk.current.setLngLat([ghost.lon, ghost.lat]);
     const lbl = ghostMk.current.getElement().querySelector(".pin-label"); if (lbl) lbl.textContent = ghost.label;
+    collide.current.storm = [pt(ghost.lon, ghost.lat, { t: "WWW", size: 22, anchor: "center", off: [0, 0] }),
+      pt(ghost.lon, ghost.lat, { t: `  ${ghost.label}  `, size: 14.5, anchor: "left", off: [1.9, 0] })];
+    pushCollide();
     ghostMk.current.getElement().style.setProperty("--cat", catColor(ghost.windMph ?? ktToMph(storm?.intensityKt ?? null) ?? null));
     src("tm-trail")?.setData(fc(ghost.trail.length >= 2 ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: ghost.trail } }] : []));
     src("tm-ring")?.setData(fc(ghost.uncertaintyMi > 1 ? [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [circle(ghost.lon, ghost.lat, ghost.uncertaintyMi)] } }] : []));
@@ -489,7 +504,7 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
   const estMin = smoothScan ? estimateMinutes(smoothScan, tNow) : 0;
   const scanAgo = smoothScan ? Math.max(0, Math.round((tNow - Date.parse(smoothScan)) / 60_000)) : 0;
   const smoothLabel = smoothActive && smoothScan
-    ? `Latest scan ${fmtClockET(smoothScan)} ET + estimated motion (${Math.round(estMin)} min)${motion ? ` · rain moving ${compass(motion.towardDeg)} ${motion.speedMph} mph${motion.method === "storm-motion" ? " (storm motion)" : ""}` : " · motion unknown, holding the scan still"}${scanAgo > MAX_EXTRAPOLATE_MIN ? " · newest scan is late" : ""}`
+    ? `Real scan at ${fmtClockET(smoothScan)} ET, moved forward ${Math.round(estMin)} min by estimate${motion ? ` · rain moving ${compassWords(motion.towardDeg)} at ${motion.speedMph} mph` : " · motion unknown, holding the scan still"}${scanAgo > MAX_EXTRAPOLATE_MIN ? " · the newest scan is late" : ""}`
     : null;
   const shownLabel = loopFrame
     ? `${loopFrame.forecast ? "Playing FORECAST radar" : "Replaying the last 2 hours"} · ${loopFrame.forecast ? "for " : "radar at "}${fmtClockET(loopFrame.time)} ET`
@@ -511,10 +526,13 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
         <button className={`phase live ${phase === "live" ? "on" : ""}`} aria-pressed={phase === "live"} onClick={() => onJump(null)}><i className="dot" />Live now</button>
         <button className={`phase past ${phase === "past" ? "on" : ""}`} aria-pressed={phase === "past"} onClick={() => onJump(phase === "past" ? sliderT : Math.round((tNow - 3.6e6) / 300_000) * 300_000)}>Past</button>
         <button className={`phase fc ${phase === "forecast" ? "on" : ""}`} aria-pressed={phase === "forecast"} onClick={() => onJump(phase === "forecast" ? sliderT : tNow + 60 * 60_000)}>Next 3 hours (forecast)</button>
-        {phase === "past" && [-120, -60, -30, -10].map((m) => <button key={m} className="btn tick" onClick={() => onJump(Math.round((tNow + m * 60_000) / 300_000) * 300_000)}>{m} min</button>)}
-        {phase === "forecast" && [30, 60, 90, 120, 180].map((m) => <button key={m} className={`btn tick ${Math.abs(sliderT - tNow - m * 60_000) < 8 * 60_000 ? "on" : ""}`} onClick={() => onJump(tNow + m * 60_000)}>+{m} min</button>)}
       </div>}
-      <LayerMenu layers={layers} mode={mode} onMode={onMode} follow={followEye} onFollow={onFollowEye} onSet={(keys, on) => onSetLayers ? onSetLayers(keys, on) : keys.forEach((k) => { if (layers[k] !== on) onToggle(k); })}
+      {onJump && phase !== "live" && <div className={`phase-ticks ph-${phase}`} role="group" aria-label={phase === "past" ? "Jump back" : "Jump ahead"} data-testid="phase-ticks">
+        <span className="pt-lbl">{phase === "past" ? "Jump back:" : "Jump ahead:"}</span>
+        {phase === "past" && [-120, -60, -30, -10].map((m) => <button key={m} className={`btn tick ${Math.abs(sliderT - tNow - m * 60_000) < 3 * 60_000 ? "on" : ""}`} onClick={() => onJump(Math.round((tNow + m * 60_000) / 300_000) * 300_000)}>{m <= -60 ? `${-m / 60} h ago` : `${-m} min ago`}</button>)}
+        {phase === "forecast" && [30, 60, 90, 120, 180].map((m) => <button key={m} className={`btn tick ${Math.abs(sliderT - tNow - m * 60_000) < 8 * 60_000 ? "on" : ""}`} onClick={() => onJump(tNow + m * 60_000)}>{m < 60 ? `+${m} min` : `+${m / 60} h`}</button>)}
+      </div>}
+      <LayerMenu keyOpen={keyOpen} onKey={() => { setKeyOpen(!keyOpen); if (!keyOpen) setTap(null); }} layers={layers} mode={mode} onMode={onMode} follow={followEye} onFollow={onFollowEye} onSet={(keys, on) => onSetLayers ? onSetLayers(keys, on) : keys.forEach((k) => { if (layers[k] !== on) onToggle(k); })}
         onHome={snap?.home.configured ? () => { fitted.current = null; map.current?.flyTo({ center: [snap.home.lon, snap.home.lat], zoom: 6 }); } : undefined} />
       {main && <div className="map-time" data-testid="map-time">Map shows: {new Date(main.time).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET{main.live ? " (live)" : main.time > Date.now() ? " (forecast)" : " (past)"}</div>}
       </div>
@@ -537,33 +555,37 @@ export default function MapView({ onJump, snap, storm, gis, layers, onToggle, on
           {looping && <div className="frame-dots">{loopFrames.map((_, i) => <i key={i} className={i === loopIdx ? "on" : ""} />)}</div>}
         </div>
       )}
-      {!keyOpen && <button className="map-key-btn" data-testid="map-key-toggle" aria-expanded="false" onClick={() => setKeyOpen(true)}>Map key ▸</button>}
       {keyOpen && <div className="map-legend" data-testid="map-legend" role="region" aria-label="Map key and sources">
-        <div className="map-legend-head"><b>Map key and sources</b><button className="btn" data-testid="map-key-close" aria-expanded="true" onClick={() => setKeyOpen(false)} title="Hide the map key">hide ✕</button></div>
-        {layers.outages && <div><OutageRamp />Power outages: Tallahassee regions (City of Tallahassee Utilities), dashed counties (ORNL ODIN), <span style={{ color: "#ffb020" }}>●</span> outages, grouped when zoomed out (number = customers).</div>}
-        {ghost && <div><span style={{ color: "#ff5a4f" }}>━</span> Path from now to the selected time · <span style={{ color: "#ff5a4f" }}>◌</span> Time-sliced cone circle, NHC 2026 radii (where the center will likely be, 2 times in 3) · <span style={{ color: "#ffd43b" }}>▧</span><span style={{ color: "#f08c00" }}>▧</span><span style={{ color: "#d6336c" }}>▧</span> Tropical-storm, 58 mph and hurricane-force wind areas at that time (NHC wind radii) · <span style={{ color: "#e3a64a" }}>━</span> Where tropical-storm winds have likely arrived by then</div>}
-        <div className={`stale-${st("nhcgis")}`}>{storm ? `${className(storm.classification)} ${storm.name}` : "No storm"} · NHC advisory {gis?.advisoryNumber ?? "—"} · {fmtET(gis?.issuance)}</div>
-        {layers.cone && <div className="cone-note">{CONE_TEXT}</div>}
-        {(layers.tornado || layers.flood) && <div className={`stale-${st("hazards")}`}>
-          Watches and warnings in effect {ghost && Math.abs(hazardTime - Date.now()) > 120_000 ? "at the selected time" : "now"}: {hzShown.length ? hzShown.length : "none on the map"} · Sources: NOAA Storm Prediction Center (watches, via Iowa Environmental Mesonet) and National Weather Service · updated {fmtET(f.hazards?.lastSuccess)}{st("hazards") !== "fresh" ? " · OUT OF DATE" : ""}
-          {hazardTime > Date.now() + 120_000 && <><br />Future times only show watches and warnings already issued. New ones can be issued at any time.</>}
-        </div>}
-        {(layers.tornado || layers.flood) && <div className="ww-key">
-          {[...(layers.tornado ? TORNADO_KINDS : []), ...(layers.flood ? FLOOD_KINDS : [])].map((k) => <span key={k}><i style={{ background: HAZARD_HEX[k] }} />{HAZARD_NAME[k]} </span>)}
-        </div>}
-        {mode !== "hazards" && <div className={`stale-${st("radar")}`}>Radar ({snap?.radar?.kind === "rainviewer" ? "RainViewer, backup" : "NOAA NEXRAD via Iowa Environmental Mesonet"}) · latest {fmtET(snap?.radar?.frames.at(-1)?.time)}</div>}
-        {snap?.power.local && <div className={`stale-${st("power")}`}>{snap.power.local.name}: {snap.power.local.count} · as of {fmtET(f.power?.sourceTime)}</div>}
-        {snap?.home.configured && <div className={`stale-${st("usgs")}`}>River gauges (USGS) · {fmtET(f.usgs?.sourceTime)} <span className="lg-dot r" />rising <span className="lg-dot s" />steady</div>}
-        <div className={`stale-${st("ndbc")}`}>Buoys near the storm (NOAA) · {fmtET(f.ndbc?.sourceTime)}</div>
-        {(snap?.tides?.length ?? 0) > 0 && <div className={`stale-${st("coops")}`}>Tide gauges (NOAA CO-OPS), color = water above predicted tide · {fmtET(f.coops?.sourceTime)}</div>}
-        <div className="ww-key"><i style={{ background: WW_HEX.HWR }} />Hurricane warning <i style={{ background: WW_HEX.HWA }} />Hurricane watch <i style={{ background: WW_HEX.TWR }} />Tropical storm warning <i style={{ background: WW_HEX.TWA }} />Tropical storm watch</div>
-        {layers.cameras && (snap?.cameras?.length ?? 0) > 0 && <div className={`stale-${st("cameras")}`}>Live cameras (white dots, click for the latest picture): USGS river and coast cameras{snap?.cameras?.some((c) => c.source === "Windy Webcams") ? " + Windy Webcams" : ""} · {fmtET(f.cameras?.sourceTime)}</div>}
-        {evacZones && evacZones.features.length > 0 && <div>Evacuation zones for the place you looked up (Florida Division of Emergency Management): <span style={{ color: "#e03131" }}>A</span> leaves first, then <span style={{ color: "#f76707" }}>B</span>, <span style={{ color: "#fab005" }}>C</span>, <span style={{ color: "#74b816" }}>D</span>, <span style={{ color: "#1c7ed6" }}>E</span>. Your county issues the orders.</div>}
-        {layers.satellite && <div>Satellite: GOES-19 infrared (cloud tops; brighter = colder, stronger storms) at {fmtET(goes.time)}{goes.clamped ? " (latest available, images arrive about 30 minutes late; not a forecast)" : ""} · NOAA / NASA GIBS</div>}
-        {layers.rain && <div className="rain-key">Rain in the last 24 hours (NOAA MRMS radar + gauges, observed) · Iowa Environmental Mesonet<div className="rain-ramp"><i style={{ background: "#00fe12" }} />0.5 in<i style={{ background: "#fefe00" }} />1.5<i style={{ background: "#fe9000" }} />2.5<i style={{ background: "#fe0000" }} />4<i style={{ background: "#fe00fe" }} />8+</div></div>}
-        {layers.nightlights && <div>NASA night lights satellite ({yesterdayUtc()}, clouds block it; post-storm use)</div>}
+        <div className="map-legend-head"><b>Map key: what the colors mean</b><button className="x-close sm" aria-label="Close the map key" data-testid="map-key-close" aria-expanded="true" onClick={() => setKeyOpen(false)} title="Close (Esc)">✕</button></div>
+        {radarOn && mode !== "hazards" && <div className="lg-sec"><b>Radar (rain and storms)</b><div className="radar-ramp">
+          {([["#7fd3a8", "Light rain"], ["#2fbf4a", "Rain"], ["#f5e33b", "Heavy rain"], ["#ff8c1a", "Very heavy"], ["#ff3b30", "Intense"], ["#e14be8", "Extreme, hail possible"]] as const).map(([c, w]) =>
+            <span key={w}><i style={{ background: c }} />{w}</span>)}</div>
+          <small className={`stale-${st("radar")}`}>NOAA weather radar ({snap?.radar?.kind === "rainviewer" ? "RainViewer backup" : "via Iowa Environmental Mesonet"}) · newest scan {fmtET(snap?.radar?.frames.at(-1)?.time)}{phase === "forecast" ? " · striped edge = computer forecast, not real radar" : ""}</small></div>}
+        {ghost && <div className="lg-sec"><b>{storm ? `${className(storm.classification)} ${storm.name}` : "The storm"}</b>
+          <div className="lg-row"><span className="lg-sw" style={{ color: catColor(ghost.windMph ?? null) }}>🌀</span>Storm center at the time shown. Color = strength: <span style={{ color: "#00faf4" }}>tropical storm</span>, <span style={{ color: "#ffffcc" }}>Cat 1</span>, <span style={{ color: "#ffe775" }}>2</span>, <span style={{ color: "#ffc140" }}>3</span>, <span style={{ color: "#ff8f20" }}>4</span>, <span style={{ color: "#ff6060" }}>5</span></div>
+          <div className="lg-row"><span className="lg-sw" style={{ color: "#ff5a4f" }}>━</span>Path from now to the time shown</div>
+          <div className="lg-row"><span className="lg-sw" style={{ color: "#e4e8e2" }}>┅</span>Official forecast path; <span style={{ color: "#8b938d" }}>grey line</span> = where it has been</div>
+          <div className="lg-row"><span className="lg-sw" style={{ color: "#ff5a4f" }}>◌</span>Likely area for the center at that time (2 out of 3 chance)</div>
+          <div className="lg-row"><span className="lg-sw"><i style={{ background: "#ffd43b" }} /><i style={{ background: "#f08c00" }} /><i style={{ background: "#d6336c" }} /></span>Wind areas: 39+ mph (tropical storm), 58+ mph, 74+ mph (hurricane force)</div>
+          {layers.cone && <div className="lg-row"><span className="lg-sw" style={{ color: "#c8cfc6" }}>▢</span>Forecast cone. {CONE_TEXT}</div>}
+          <small className={`stale-${st("nhcgis")}`}>National Hurricane Center advisory {gis?.advisoryNumber ?? "—"} · {fmtET(gis?.issuance)}</small></div>}
+        {(layers.tornado || layers.flood || layers.warnings) && <div className="lg-sec"><b>Watches and warnings (shapes on the map)</b>
+          <div className="ww-key">
+            {[...(layers.tornado ? TORNADO_KINDS : []), ...(layers.flood ? FLOOD_KINDS : [])].map((k) => <span key={k}><i style={{ background: HAZARD_HEX[k] }} />{HAZARD_NAME[k]}</span>)}
+            {layers.warnings && <><span><i style={{ background: WW_HEX.HWR }} />Hurricane warning (coast)</span><span><i style={{ background: WW_HEX.HWA }} />Hurricane watch (coast)</span><span><i style={{ background: WW_HEX.TWR }} />Tropical storm warning (coast)</span><span><i style={{ background: WW_HEX.TWA }} />Tropical storm watch (coast)</span></>}
+          </div>
+          <small>A <b>watch</b> means it could happen: be ready. A <b>warning</b> means it is happening or about to: act now.</small>
+          <small className={`stale-${st("hazards")}`}>{hzShown.length ? `${hzShown.length} in effect ${ghost && Math.abs(hazardTime - Date.now()) > 120_000 ? "at the time shown" : "now"}` : "None on the map"} · Storm Prediction Center and National Weather Service · updated {fmtET(f.hazards?.lastSuccess)}{st("hazards") !== "fresh" ? " · out of date" : ""}
+            {hazardTime > Date.now() + 120_000 && <> · Future times only show alerts already issued; new ones can come at any time.</>}</small></div>}
+        {layers.outages && <div className="lg-sec"><b>Power outages</b><OutageRamp /><small>Shading = share of customers without power. <span style={{ color: "#ffb020" }}>●</span> orange dots = outages (the number is customers out, grouped when zoomed out). Dashed outlines = counties.{snap?.power.local ? ` ${snap.power.local.name}: ${snap.power.local.count} outages as of ${fmtET(f.power?.sourceTime)}.` : ""}</small></div>}
+        {layers.rain && <div className="lg-sec"><b>Rain in the last 24 hours (measured)</b><div className="rain-ramp"><i style={{ background: "#00fe12" }} />0.5 in<i style={{ background: "#fefe00" }} />1.5 in<i style={{ background: "#fe9000" }} />2.5 in<i style={{ background: "#fe0000" }} />4 in<i style={{ background: "#fe00fe" }} />8+ in</div><small>NOAA radar and rain gauges, via Iowa Environmental Mesonet</small></div>}
+        {layers.satellite && <div className="lg-sec"><b>Satellite (infrared)</b><small>Cloud tops seen from space at {fmtET(goes.time)}. Brighter = colder, taller clouds = stronger storms.{goes.clamped ? " Images arrive about 30 minutes late; this is the newest one." : ""} NOAA GOES-19 via NASA</small></div>}
+        {(layers.gauges || layers.buoys) && <div className="lg-sec"><b>Rivers, tides and buoys</b><small>{snap?.home.configured && <>River gauges: <span className="lg-dot r" />rising <span className="lg-dot s" />steady (U.S. Geological Survey, {fmtET(f.usgs?.sourceTime)}). </>}{(snap?.tides?.length ?? 0) > 0 && <>Tide gauges: <span style={{ color: "#4dabf7" }}>●</span> normal, <span style={{ color: "#f08c00" }}>●</span> 1+ ft above the predicted tide, <span style={{ color: "#e03131" }}>●</span> 2+ ft (possible surge). </>}Buoys: white rings, click for wind and waves (NOAA).</small></div>}
+        {layers.cameras && (snap?.cameras?.length ?? 0) > 0 && <div className="lg-sec"><b>Live cameras</b><small>White dots with a blue ring: click for the latest picture. U.S. Geological Survey river and coast cameras{snap?.cameras?.some((c) => c.source === "Windy Webcams") ? " and Windy Webcams" : ""} · {fmtET(f.cameras?.sourceTime)}</small></div>}
+        {evacZones && evacZones.features.length > 0 && <div className="lg-sec"><b>Evacuation zones</b><small>For the place you looked up: <span style={{ color: "#e03131" }}>A</span> leaves first, then <span style={{ color: "#f76707" }}>B</span>, <span style={{ color: "#fab005" }}>C</span>, <span style={{ color: "#74b816" }}>D</span>, <span style={{ color: "#1c7ed6" }}>E</span>. Your county issues the orders. Florida Division of Emergency Management</small></div>}
+        {layers.nightlights && <div className="lg-sec"><b>Night lights</b><small>NASA satellite picture of city lights from {yesterdayUtc()}. Dark areas after a storm can mean power is out. Clouds block it.</small></div>}
       </div>}
-      {tap && <TapCard point={tap} time={sliderT} onClose={() => setTap(null)}
+      {tap && !keyOpen && <TapCard point={tap} time={sliderT} onClose={() => setTap(null)}
         storm={storm ? (ghost ? { name: storm.name, lat: ghost.lat, lon: ghost.lon, live: !!ghost.live } : { name: storm.name, lat: storm.lat, lon: storm.lon, live: true }) : null} />}
     </div>
   );

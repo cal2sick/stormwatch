@@ -8,6 +8,15 @@ export const HAZARD_NAME: Record<HazardKind, string> = {
   tornadoWarning: "Tornado warning", tornadoWatch: "Tornado watch", severeWatch: "Severe thunderstorm watch",
   flashFloodWarning: "Flash flood warning", flashFloodWatch: "Flash flood watch",
 };
+/** v0.7.1: ONE alert palette for the whole app (map shapes, alert bar, hour strip dots, tap card, legend). */
+export const ALERT_HEX: Record<string, string> = {
+  "Tornado Warning": HAZARD_HEX.tornadoWarning, "Tornado Watch": HAZARD_HEX.tornadoWatch, "Severe Thunderstorm Watch": HAZARD_HEX.severeWatch,
+  "Flash Flood Warning": HAZARD_HEX.flashFloodWarning, "Flash Flood Watch": HAZARD_HEX.flashFloodWatch, "Flood Watch": HAZARD_HEX.flashFloodWatch, "Flood Warning": "#51cf66",
+  "Hurricane Warning": "#d23c34", "Hurricane Watch": "#b77aa6", "Tropical Storm Warning": "#5f86b8", "Tropical Storm Watch": "#c2ad5c",
+  "Storm Surge Warning": "#ae3ec9", "Storm Surge Watch": "#da77f2", "Severe Thunderstorm Warning": "#ff922b", "Extreme Wind Warning": "#ff8c00",
+  "High Wind Warning": "#daa520", "Wind Advisory": "#d2b48c",
+};
+export const alertHex = (event: string) => ALERT_HEX[event] ?? "#8899aa";
 export const TORNADO_KINDS: HazardKind[] = ["tornadoWarning", "tornadoWatch", "severeWatch"];
 export const FLOOD_KINDS: HazardKind[] = ["flashFloodWarning", "flashFloodWatch"];
 

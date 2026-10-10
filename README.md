@@ -30,15 +30,13 @@ cd stormwatch && git pull && npm install && npm start
 
 No Node yet? Mac: `brew install node`. Ubuntu/Debian: `curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs`. Windows: use WSL, or `docker compose up --build`.
 
-## Set your home
+## Set your location
 
-**Default home: Florida State University** (main campus) for everyone, so distance, alerts, winds, outages and the threat level work right away.
+There is **no built-in location**. Until you set one, the map shows storms only and centers on the active storm.
 
-**Easiest: use "Change home"** at the top of the left sidebar. Search an address, city or ZIP, or click "Click on the map" and tap your spot. It is saved only in this browser, overrides `.env`, and "Reset to default" undoes it.
+**Easiest: "Set your location"** at the top of the left sidebar. Search an address, city or ZIP, or click "Click on the map" and tap your spot. It is saved only in this browser, never shared, overrides `.env`, and "Clear my location" undoes it. Distance, your risk level, winds, alerts, outages and the live feed all follow it.
 
-**Home looks wrong?** Either use Change home, or delete the `HOME_LAT`, `HOME_LON` and `HOME_NAME` lines from `.env` and restart to use the FSU default.
-
-Optional: set a home for this computer in `.env` (used when the browser has no saved home):
+Optional: set a location for this computer in `.env` (used when the browser has none saved):
 
 ```bash
 cp .env.example .env
@@ -89,7 +87,7 @@ The server only listens on `localhost`. To give a friend a temporary link while 
 - `.env`: location, `USER_AGENT`, `PORT` / `HOST`, optional plugins. See `.env.example`.
 - `config/thresholds.json`: threat rules, stale thresholds and poll intervals (re-read every poll).
 - `config/outage-sources.json`: power outage feeds used for "Power outages near ..." after you search for a place (free public feeds only; others are link-outs).
-- `config/landmarks.json`: public places drawn on the map for everyone ("Places" layer, on by default). Ships with Tallahassee, Florida State University and Collegetown. Add your own `{ "name", "lat", "lon", "kind" }` entries. Never put your home here; that stays in `.env`.
+- `config/landmarks.json`: public places drawn on the map for everyone ("Places" layer, on by default). Ships with a few public Tallahassee places. Add your own `{ "name", "lat", "lon", "kind" }` entries. Never put your home here; that stays in `.env`.
 - Optional data plugins (power outages, county outage reports) are **off by default**. See [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md).
 
 ## Privacy

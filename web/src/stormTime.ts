@@ -89,7 +89,7 @@ export function sliderRange(track: TrackPoint[], now: number, maxPastH = 72): [n
 /** Human label for an advisory in the selector. */
 export function advisoryLabel(a: { advNum: string; kind: string; issuedUTC: string }): string {
   const when = new Date(a.issuedUTC).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit" }) + " ET";
-  if (a.advNum.startsWith("OFCL")) return `Forecast issued ${when} (from NHC forecast archive)`;
+  if (a.advNum.startsWith("OFCL")) return `Forecast issued ${when} (National Hurricane Center archive)`;
   return `Advisory ${a.advNum}${a.kind === "intermediate" ? " (position update)" : ""}, ${when}`;
 }
 export { gcInterp };

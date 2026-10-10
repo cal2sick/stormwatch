@@ -39,7 +39,7 @@ export default function HitTimeline({ hourly, alerts, now, place, onPick, select
         })}
       </div>
       {point && <RainSoFar lat={point.lat} lon={point.lon} />}
-      <div className="hit-key"><span>Bars: gusts (mph)</span><span>%: rain chance</span><span>Dots: alerts in effect</span></div>
+      <div className="hit-key"><span><i className="hk-bar" />Bar and top number: wind gusts in mph (yellow 25+, orange 39+ = tropical-storm force, red 58+, purple 74+ = hurricane force)</span><span><b className="hk-pop">%</b> chance of rain</span><span><i className="hk-dot" />Dots: alerts in effect that hour (same colors as the map)</span><span><i className="hk-worst" />Red outline: windiest hours</span></div>
     </div>
   );
 }

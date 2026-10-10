@@ -15,7 +15,7 @@ export default function VitalsPanel({ snap, storm, now, area }: { snap: Snapshot
   const etaDisp = etaH == null ? "—" : etaH <= 0 ? "now" : etaH < 1 ? `${Math.round(etaH * 60)}m` : `${etaH.toFixed(etaH < 10 ? 1 : 0)}h`;
   return (
     <Panel title={s ? `${className(s.classification)} ${s.name} · vitals` : "Storm vitals"} feed={snap?.feeds.nhc} area={area}
-      source={`NHC CurrentStorms · adv ${s?.advisoryNumber ?? "—"}`} time={s?.lastUpdate ?? null}>
+      source={`National Hurricane Center, advisory ${Number(s?.advisoryNumber ?? 0) || s?.advisoryNumber || "—"}`} time={s?.lastUpdate ?? null}>
       {!s ? <div className="dim">No active storms in the NHC feed.</div> : <>
         <div className="readouts">
           <ScaleReadout label="Max wind" value={s.intensityKt} min={0} max={160} unit=" knots" ticks={WIND_TICKS} sub={`${ktToMph(s.intensityKt) ?? "—"} mph · ${s.category}`} alert={(s.intensityKt ?? 0) >= 64} />

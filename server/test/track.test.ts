@@ -40,6 +40,6 @@ d("track interpolation", () => {
   });
   it("describes in plain English", () => {
     const txt = describeState(stateAt(track, t0 + 15 * H, home)!, "Example", "012");
-    expect(txt).toMatch(/interpolated 50% between 12h forecast point and 24h forecast point/);
+    expect(txt).toMatch(/estimated 50% of the way between 12h forecast point and 24h forecast point/);
   });
 });

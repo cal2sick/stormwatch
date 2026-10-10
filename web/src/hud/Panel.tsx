@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { FeedStatus } from "../types";
 import { fmtET, staleness } from "../time";
+import { plain } from "../plain";
 
 /**
  * Every panel shows its source + the source's own ET timestamp + a stale color (AGENTS.md rule 1).
@@ -32,9 +33,9 @@ export default function Panel({ title, feed, source, time, area, children, right
       </header>
       {!collapsed && <div className="panel-body">{children}</div>}
       {!collapsed && <footer className={`src stale-${st}`} title={feed?.error ?? (feed ? `fetched ${fmtET(feed.lastSuccess)}` : "")}>
-        <span className="led" />SRC {source ?? feed?.source ?? "—"} · {fmtET(time !== undefined ? time : feed?.sourceTime)}
-        {st !== "fresh" && <b className="stale-tag">{st === "amber" ? " · STALE" : " · STALE >6×"}</b>}
-        {feed?.error && <b className="err-tag"> ERR</b>}
+        <span className="led" />Source: {plain(source ?? feed?.source) || "—"}{(() => { const t = fmtET(time !== undefined ? time : feed?.sourceTime); return t && t !== "—" ? ` · ${t}` : ""; })()}
+        {st !== "fresh" && <b className="stale-tag">{st === "amber" ? " · out of date" : " · very out of date"}</b>}
+        {feed?.error && <b className="err-tag"> · last update failed, showing the last good data</b>}
       </footer>}
     </section>
   );
